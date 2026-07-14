@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#236a57">
+  <title>Hearts</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="log-hidden">
+  <header>
+    <h1>Hearts</h1>
+    <div id="score" class="score" aria-label="Running scores"></div>
+    <div id="broken" class="broken" title="Hearts are not broken" aria-label="Hearts are not broken">♥</div>
+    <select id="difficulty" class="difficulty" title="Bot strength (next new game)" aria-label="Bot strength">
+      <option value="newbie">Easy</option>
+      <option value="greedy" selected>Medium</option>
+      <option value="mc:128">Hard</option>
+      <option value="mc:1024">Expert</option>
+    </select>
+    <button id="hint-button" class="quiet" title="Ask the solver (h)">Hint</button>
+    <button id="logtoggle" class="quiet" title="Show/hide the log (l)"></button>
+  </header>
+
+  <main>
+    <section class="game-table" aria-label="Hearts table">
+      <section id="seat-2" class="opponent north" aria-label="North's hand"></section>
+      <section id="seat-1" class="opponent west" aria-label="West's hand"></section>
+      <section id="seat-3" class="opponent east" aria-label="East's hand"></section>
+
+      <section id="trick" class="trick" aria-label="Current trick">
+        <div id="trick-slot-2" class="trick-slot trick-north" data-seat="2"></div>
+        <div id="trick-slot-1" class="trick-slot trick-west" data-seat="1"></div>
+        <div id="trick-slot-3" class="trick-slot trick-east" data-seat="3"></div>
+        <div id="trick-slot-0" class="trick-slot trick-south" data-seat="0"></div>
+        <div id="pass-pot" class="pass-pot" hidden>Passing</div>
+      </section>
+
+      <section class="you">
+        <div class="you-label"><span>You</span><span id="you-points" class="seat-badge"></span></div>
+        <div id="hand" class="hand" aria-label="Your hand"></div>
+      </section>
+    </section>
+
+    <div id="actions" class="actions" aria-live="polite"></div>
+    <div id="hint" class="hint" hidden></div>
+  </main>
+
+  <aside id="log" class="log" aria-label="Game log"></aside>
+  <section id="showdown" class="showdown" hidden aria-live="polite"></section>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

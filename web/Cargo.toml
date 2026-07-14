@@ -1,0 +1,36 @@
+[package]
+name = "hearts-web"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+publish = false
+license = "Apache-2.0"
+description = "Browser front end for hearts-engine: play three bots in the browser"
+
+# Standalone crate: an empty `[workspace]` makes this its own workspace root so
+# the parent `hearts-engine` package never adopts it, keeping the library's
+# build and publish untouched.
+[workspace]
+
+[lib]
+# cdylib for the wasm artifact; rlib so `cargo test` can build a native harness.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Must match the engine's hearts version: a path dep and a registry dep are
+# distinct crates to Cargo even at the same version, so their `Card` types would
+# not unify across the two dependencies.  Path during bootstrap; flip to the
+# published version together with the engine's own dependency.
+hearts = { path = "../../hearts" }
+hearts-engine = { path = ".." }
+rand = "0.10"
+wasm-bindgen = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Wasm only: getrandom (a transitive dep via rand 0.10) refuses to *compile*
+# for wasm32-unknown-unknown unless a backend is selected — even though we never
+# call it (the RNG is seeded from JS).  getrandom 0.4 picks its browser backend
+# from this feature alone, no extra cfg needed.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.4", features = ["wasm_js"] }

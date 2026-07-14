@@ -1,0 +1,65 @@
+[package]
+name = "hearts-engine"
+version = "0.1.0"
+authors = ["Chen-Pang He (https://jdh8.org)"]
+edition = "2024"
+rust-version = "1.93"
+description = "Hearts bots: heuristic and Monte Carlo strategies over an information-hygienic view"
+repository = "https://github.com/jdh8/hearts-engine"
+homepage = "https://github.com/jdh8/hearts-engine"
+documentation = "https://docs.rs/hearts-engine"
+readme = "README.md"
+license = "Apache-2.0"
+categories = ["game-development", "games", "simulation"]
+keywords = ["hearts", "cards", "ai", "bot", "monte-carlo"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+# The Monte Carlo bot, dealing helpers (`Table::deal`, `play_game`), and the
+# `play`/`arena` examples.  On by default because the strongest bot needs
+# randomness; the trait, view, driver, and heuristic bot work without it.
+default = ["rand"]
+rand = ["dep:rand", "hearts/rand"]
+# Monte Carlo rollouts across the CPU cores.  Decisions are bit-identical
+# to the serial build: batch results are collected in world order and
+# reduced sequentially.  Off by default; the wasm front end never sees it.
+parallel = ["dep:rayon", "rand"]
+
+[dependencies]
+# Path dependency while hearts 0.1.0 is unpublished; flip to a version once
+# it lands on crates.io so the CI workflows and docs.rs build work.
+hearts = { path = "../hearts" }
+rand = { version = "0.10", optional = true }
+rayon = { version = "1.10", optional = true }
+thiserror = "2"
+
+[dev-dependencies]
+anyhow = "1.0.98"
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+proptest = { version = "1.9", default-features = false, features = ["std"] }
+rayon = "1.10"
+
+[[bench]]
+name = "decision"
+harness = false
+required-features = ["rand"]
+
+# Auto-discovery would hide these examples from `cargo run --example`
+# listings when the feature is off; the explicit entries document the
+# requirement.
+[[example]]
+name = "play"
+required-features = ["rand"]
+
+[[example]]
+name = "arena"
+required-features = ["rand"]
+
+[[example]]
+name = "tune"
+required-features = ["rand"]
+
+[profile.dev.package."*"]
+opt-level = 2

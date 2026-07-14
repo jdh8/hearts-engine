@@ -1,0 +1,13 @@
+# A global `[build] rustflags = ["-Ctarget-cpu=native"]` (common in a developer's
+# ~/.cargo/config.toml for native performance) leaks into this wasm cross-compile,
+# where `target-cpu=native` is meaningless and corrupts the module's target-feature
+# set — which then makes `wasm-bindgen`'s externref transform fail with
+# "failed to find intrinsics to enable `clone_ref`".
+#
+# A target-specific `rustflags` overrides `[build] rustflags` entirely (cargo uses
+# the most specific source, they do not merge), so this displaces the native flag
+# for wasm builds only.  It must be non-empty — cargo ignores an empty array and
+# falls back to the build-level flags — so we pin `+reference-types`, which the
+# linked std already enables and wasm-bindgen's glue needs.
+[target.wasm32-unknown-unknown]
+rustflags = ["-Ctarget-feature=+reference-types"]
