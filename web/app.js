@@ -11,8 +11,8 @@ const HINT_MIN = 128;
 const HINT_MAX = 2048;
 
 const SUITS = {
-  C: ['♣', 'black'],
-  D: ['♦', 'red'],
+  C: ['♣', 'green'],
+  D: ['♦', 'blue'],
   H: ['♥', 'red'],
   S: ['♠', 'black'],
 };
@@ -295,10 +295,9 @@ function renderHand(snapshot) {
     (a, b) => SUIT_ORDER[a.suit] - SUIT_ORDER[b.suit] || a.rank - b.rank,
   );
 
-  cards.forEach((card, index) => {
+  cards.forEach((card) => {
     const el = cardEl(card);
     el.dataset.code = card.code;
-    el.style.setProperty('--fan-angle', `${(index - (cards.length - 1) / 2) * 0.65}deg`);
     if (firstTrick && card.received) el.classList.add('received');
     if (passing) {
       el.disabled = false;
@@ -465,7 +464,7 @@ function cardEl(card) {
   const el = document.createElement('button');
   el.type = 'button';
   el.className = `card ${colour}`;
-  el.innerHTML = `<span class="corner"><span class="rank">${RANKS[card.rank]}</span><span class="mini-suit">${glyph}</span></span><span class="suit">${glyph}</span>`;
+  el.innerHTML = `<span class="rank">${RANKS[card.rank]}</span><span class="suit">${glyph}</span>`;
   el.setAttribute('aria-label', card.code || `${RANKS[card.rank]}${glyph}`);
   el.disabled = true;
   return el;

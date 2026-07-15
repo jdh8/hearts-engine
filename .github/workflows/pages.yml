@@ -24,8 +24,8 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-    # The web crate depends on hearts from crates.io (path during bootstrap), so a plain checkout is
-    # enough — no sibling hearts checkout needed.
+    # Both crates depend on hearts from crates.io, so a plain checkout is
+    # enough — no sibling hearts checkout is needed.
     - uses: actions/checkout@v7
     - name: Install wasm-pack
       run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh

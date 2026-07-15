@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] — Unreleased
+## [0.1.0] — 2026-07-15
+
+### Changed
+
+- Use the published `hearts` 0.1.0 crate instead of a sibling path dependency.
+- Raise the web crate's `wasm-bindgen` lower bound to the version required by
+  its `getrandom` backend.
+- Simplify the web cards to the flat, four-colour faces and straight, fully
+  visible player hand used by the gin-rummy engine.
+- Align the numeric columns in the web solver's hint table.
 
 ### Added
 

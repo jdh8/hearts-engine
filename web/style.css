@@ -1,16 +1,25 @@
+@font-face {
+  font-family: "Source Han Suits";
+  font-weight: 1 1000;
+  font-style: oblique -90deg 90deg;
+  src: url("https://jdh8.github.io/fonts/suits.woff2") format("woff2");
+}
+
 /* A deliberately plain kitchen-table look: deep felt, flat card faces, and a
-   cheap patterned back. Everything is local — no fonts, images, or assets. */
+   cheap patterned back. */
 
 :root {
   --felt: #236a57;
   --felt-dark: #174f42;
-  --card-bg: #fffef8;
-  --red: #bd2f2b;
-  --black: #171918;
-  --back: #a93636;
+  --card-bg: #fdfdf7;
+  --red: #c0392b;
+  --black: #1b1b1b;
+  --green: #1e7a45;
+  --blue: #1a74d9;
+  --back: #b23a3a;
   --gold: #f1cb4b;
-  --card-w: 3.15rem;
-  --card-h: 4.45rem;
+  --card-w: 2.7rem;
+  --card-h: 3.8rem;
 }
 
 * { box-sizing: border-box; }
@@ -20,7 +29,7 @@ body {
   min-height: 100vh;
   color: #f6f5ed;
   background: var(--felt);
-  font: 15px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 15px/1.4 "Source Han Suits", system-ui, sans-serif;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);
   grid-template-rows: auto minmax(0, 1fr);
@@ -109,13 +118,8 @@ main {
 }
 
 .fan { display: flex; justify-content: center; min-width: var(--card-w); min-height: var(--card-h); }
-.north .fan .card { margin-left: -2rem; }
-.north .fan .card:first-child { margin-left: 0; }
-.west .fan, .east .fan { flex-direction: column; }
-.west .fan .card, .east .fan .card { margin-top: -3.45rem; }
-.west .fan .card:first-child, .east .fan .card:first-child { margin-top: 0; }
-.west .fan { transform: rotate(4deg); }
-.east .fan { transform: rotate(-4deg); }
+.fan .card { margin-left: -1.5rem; box-shadow: -1px 1px 2px rgba(0, 0, 0, 0.3); }
+.fan .card:first-child { margin-left: 0; }
 
 .trick {
   position: absolute;
@@ -127,8 +131,8 @@ main {
 }
 .trick-slot { position: absolute; width: var(--card-w); height: var(--card-h); transition: filter 0.2s; }
 .trick-north { left: 50%; top: 0; transform: translateX(-50%); }
-.trick-west { left: 0; top: 50%; transform: translateY(-50%) rotate(-4deg); }
-.trick-east { right: 0; top: 50%; transform: translateY(-50%) rotate(4deg); }
+.trick-west { left: 0; top: 50%; transform: translateY(-50%); }
+.trick-east { right: 0; top: 50%; transform: translateY(-50%); }
 .trick-south { left: 50%; bottom: 0; transform: translateX(-50%); }
 .trick-slot.winning { filter: drop-shadow(0 0 0.32rem var(--gold)); }
 .pass-pot {
@@ -163,45 +167,45 @@ main {
 .you-label { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.1rem; font-weight: 700; }
 .hand {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   align-items: flex-end;
+  gap: 0.3rem;
   width: 100%;
   padding-top: 0.72rem;
   min-height: calc(var(--card-h) + 1.1rem);
 }
-.hand .card { margin-left: clamp(-2.15rem, -2.6vw, -1.38rem); transform: rotate(var(--fan-angle)); transform-origin: 50% 150%; }
-.hand .card:first-child { margin-left: 0; }
 
 /* Cards. Faces are buttons so keyboard focus and card clicks share one target. */
 .card {
   width: var(--card-w);
   height: var(--card-h);
   margin: 0;
-  padding: 0.25rem 0.3rem;
+  padding: 0.2rem 0.3rem;
   flex: none;
   border: 0;
   border-radius: 6px;
   background: var(--card-bg);
   color: var(--black);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.42);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   font: inherit;
-  font-weight: 750;
+  font-weight: 600;
 }
 .card.red { color: var(--red); }
-.corner { display: flex; flex-direction: column; align-items: flex-start; line-height: 0.8; }
-.rank { font-size: 0.92rem; }
-.mini-suit { font-size: 0.68rem; }
-.card .suit { align-self: flex-end; font-family: Georgia, "Times New Roman", serif; font-size: 1.48rem; line-height: 1; }
+.card.black { color: var(--black); }
+.card.green { color: var(--green); }
+.card.blue { color: var(--blue); }
+.card .rank { align-self: flex-start; }
+.card .suit { align-self: flex-end; font-size: 1.2rem; }
 
 .card.back {
-  border: 2px solid #f8eee1;
+  border: 2px solid #fff;
   background-color: var(--back);
-  background-image:
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 4px, transparent 4px 8px),
-    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.08) 0 4px, transparent 4px 8px);
+  background-image: repeating-linear-gradient(
+    45deg, rgba(255, 255, 255, 0.18) 0 5px, transparent 5px 10px);
 }
 .card.slot { border: 2px dashed rgba(255, 255, 255, 0.2); background: transparent; box-shadow: none; }
 
@@ -209,9 +213,9 @@ button.card:disabled { opacity: 1; }
 .hand .card.clickable { cursor: pointer; transition: transform 0.1s, box-shadow 0.15s, opacity 0.15s; }
 .hand .card.clickable:disabled { pointer-events: auto; }
 .hand .card.clickable:hover,
-.hand .card.clickable:focus-visible { transform: translateY(-0.45rem) rotate(var(--fan-angle)); box-shadow: 0 5px 9px rgba(0, 0, 0, 0.35); outline: none; }
+.hand .card.clickable:focus-visible { transform: translateY(-0.45rem); box-shadow: 0 5px 9px rgba(0, 0, 0, 0.35); outline: none; }
 .hand .card.illegal { opacity: 0.42; filter: saturate(0.55); }
-.hand .card.selected { transform: translateY(-0.85rem) rotate(var(--fan-angle)); box-shadow: 0 0 0 3px var(--gold), 0 5px 9px rgba(0, 0, 0, 0.35); }
+.hand .card.selected { transform: translateY(-0.85rem); box-shadow: 0 0 0 3px var(--gold), 0 5px 9px rgba(0, 0, 0, 0.35); }
 .hand .card.received::after { content: "received"; align-self: center; color: #926c00; font-size: 0.5rem; font-weight: 800; letter-spacing: 0.04em; }
 .hand .card.received { background: #fff9d9; box-shadow: 0 0 0 2px rgba(241, 203, 75, 0.72), 0 1px 3px rgba(0, 0, 0, 0.42); }
 
@@ -265,7 +269,7 @@ button:disabled { cursor: default; opacity: 0.45; }
   opacity: 0.72;
 }
 .hint-note { margin: 0 0 0.45rem; font-size: 0.77rem; opacity: 0.72; }
-.hint-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.8rem; padding: 0.16rem 0.38rem; border-radius: 4px; font-variant-numeric: tabular-nums; }
+.hint-row { display: grid; grid-template-columns: minmax(0, 1fr) 5rem 5.5rem; gap: 0.8rem; padding: 0.16rem 0.38rem; border-radius: 4px; font-variant-numeric: tabular-nums; }
 .hint-row span:not(:first-child) { text-align: right; }
 .hint-head { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.65; }
 .hint-row.best { background: rgba(241, 203, 75, 0.23); font-weight: 750; }
@@ -336,9 +340,7 @@ body.log-hidden .log { display: none; }
   .quiet, .difficulty { font-size: 0.76rem; padding: 0.2rem 0.45rem; }
   .game-table { height: 28.5rem; min-height: 28.5rem; }
   .trick { top: 43%; transform: translate(-50%, -50%) scale(0.9); }
-  .hand .card { margin-left: -1.95rem; }
-  .north .fan .card { margin-left: -1.9rem; }
-  .west .fan .card, .east .fan .card { margin-top: -3.05rem; }
+  .fan .card { margin-left: -1.9rem; }
   .round-result { grid-template-columns: repeat(2, 1fr); }
 }
 

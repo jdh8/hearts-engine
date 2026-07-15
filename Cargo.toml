@@ -28,9 +28,7 @@ rand = ["dep:rand", "hearts/rand"]
 parallel = ["dep:rayon", "rand"]
 
 [dependencies]
-# Path dependency while hearts 0.1.0 is unpublished; flip to a version once
-# it lands on crates.io so the CI workflows and docs.rs build work.
-hearts = { path = "../hearts" }
+hearts = "0.1.0"
 rand = { version = "0.10", optional = true }
 rayon = { version = "1.10", optional = true }
 thiserror = "2"

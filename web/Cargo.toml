@@ -17,15 +17,13 @@ description = "Browser front end for hearts-engine: play three bots in the brows
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Must match the engine's hearts version: a path dep and a registry dep are
-# distinct crates to Cargo even at the same version, so their `Card` types would
-# not unify across the two dependencies.  Path during bootstrap; flip to the
-# published version together with the engine's own dependency.
-hearts = { path = "../../hearts" }
+# Keep this compatible with the engine's direct dependency so Cargo resolves a
+# single `hearts` crate and its `Card` type stays identical across both crates.
+hearts = "0.1.0"
 hearts-engine = { path = ".." }
 rand = "0.10"
-wasm-bindgen = "0.2"
-serde = { version = "1", features = ["derive"] }
+wasm-bindgen = "0.2.100"
+serde = { version = "1.0.166", features = ["derive"] }
 serde_json = "1"
 
 # Wasm only: getrandom (a transitive dep via rand 0.10) refuses to *compile*
