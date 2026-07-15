@@ -13,7 +13,7 @@ use hearts::{Card, Hand, PassDirection, Phase, Rank, Round, RoundResult, Rules, 
 use rand::{Rng, RngExt as _};
 
 /// How many candidate plays a decision weighs after collapsing
-/// rank-adjacent equivalents; the rest are never worth a rollout.
+/// rank-adjacent equal-value equivalents; the rest are never worth a rollout.
 const MAX_CANDIDATES: usize = 8;
 
 /// How many of the highest [`pass_score`] cards seed the pass triples:
@@ -341,8 +341,8 @@ fn pass_candidates(view: &View<'_>) -> Vec<Candidate> {
 
 /// The candidate plays: the legal set collapsed by rank adjacency — cards
 /// of a suit separated only by ranks this seat has seen (own hand or
-/// played) are interchangeable — the greedy incumbent first, capped at
-/// [`MAX_CANDIDATES`]
+/// played) *and* of equal penalty value are interchangeable — the greedy
+/// incumbent first, capped at [`MAX_CANDIDATES`]
 fn play_candidates(view: &View<'_>) -> Vec<Candidate> {
     let legal = view.legal_plays();
     if legal.len() < 2 {
@@ -368,8 +368,15 @@ fn play_candidates(view: &View<'_>) -> Vec<Candidate> {
         let mut prev: Option<Rank> = None;
         for rank in legal[suit] {
             if let Some(prev) = prev {
-                let contiguous =
-                    (prev.get() + 1..rank.get()).all(|gap| seen[suit].contains(Rank::new(gap)));
+                // Rank-adjacency is not equivalence: two touching cards of
+                // unequal penalty value (Q♠ vs J♠) are distinct plays.
+                // ponytail: keys on Card::points() (u8, standard Hearts); a
+                // variant like Omnibus (J♦ = -10, 10♣ doubler) must widen the
+                // value function this consults, then this line follows it.
+                let same_value =
+                    (Card { suit, rank: prev }).points() == (Card { suit, rank }).points();
+                let contiguous = same_value
+                    && (prev.get() + 1..rank.get()).all(|gap| seen[suit].contains(Rank::new(gap)));
                 if !contiguous {
                     flush(&mut group, &mut reps);
                 }
@@ -744,6 +751,58 @@ mod tests {
         // North leads trick 1: only the 2♣ is legal, no real choice.
         let north = table.turn().expect("a fresh hold deal has a leader");
         assert_eq!(play_candidates(&table.view(north)).len(), 0);
+    }
+
+    #[test]
+    fn play_candidates_keep_queen_distinct_from_neighbors() {
+        // South must follow a led spade holding only J♠ and Q♠. They are
+        // rank-adjacent, but Q♠ is worth 13 penalty points and J♠ nothing —
+        // they are not one candidate, and the solver must not refuse the read.
+        let hand = |cards: &str| -> Hand {
+            cards
+                .split_whitespace()
+                .map(|c| c.parse().expect("valid card"))
+                .collect()
+        };
+        let hands = [
+            hand("2C 6C 7C 8C 6D 7D 8D 9D 6H 7H 8H 3S 4S"), // North: leads 2♣
+            hand("9C TC AC TD JD QD 9H TH JH 2S 5S 6S 7S"), // East: wins T1, leads a spade
+            hand("3C 4C 5C 2D 3D 4D 5D 2H 3H 4H 5H JS QS"), // South: only spades are J♠ Q♠
+            hand("JC QC KC KD AD QH KH AH 8S 9S TS KS AS"), // West
+        ];
+        let mut round = Round::from_deal(Rules::new(), PassDirection::Hold, hands)
+            .expect("a full partition deals");
+        for (seat, card) in [
+            (Seat::North, "2C"),
+            (Seat::East, "AC"),
+            (Seat::South, "3C"),
+            (Seat::West, "JC"),
+            (Seat::East, "2S"), // East won trick 1; now it leads a low spade
+        ] {
+            round
+                .play(seat, card.parse().expect("valid card"))
+                .expect("a legal scripted play");
+        }
+
+        let table = Table::new(round);
+        assert_eq!(
+            table.turn(),
+            Some(Seat::South),
+            "South is to follow the spade"
+        );
+        let view = table.view(Seat::South);
+
+        let cands = play_candidates(&view);
+        assert_eq!(cands.len(), 2, "Q♠ must not collapse into J♠");
+        assert!(
+            cands
+                .iter()
+                .any(|c| matches!(c.choice, Choice::Play(card) if card == Card::QUEEN_OF_SPADES)),
+            "Q♠ is weighed as its own play",
+        );
+
+        let mut solver = MonteCarloBot::new(StdRng::seed_from_u64(7)).samples(64);
+        assert!(!solver.assess(&view).is_empty(), "the hint offers a read");
     }
 
     #[test]
