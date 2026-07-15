@@ -612,8 +612,8 @@ impl WebGame {
     /// equity (chance to win the game) and expected round points (lower is
     /// better), the bot's own pick flagged; empty when the move is forced.
     ///
-    /// `samples` is the Monte Carlo world count; the JS side starts small
-    /// and adapts it to the device's measured hint latency.
+    /// `samples` is the Monte Carlo world count; the JS side fixes it at
+    /// 128, matching the Expert bot (more worlds show no measurable gain).
     #[must_use]
     pub fn hint(&mut self, samples: u32) -> String {
         let rows: Vec<HintJson> = self

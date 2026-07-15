@@ -6,9 +6,7 @@ import init, { WebGame } from './pkg/hearts_web.js';
 
 const PACE_MS = 650; // pause between bot steps, so the table can be followed
 const FLY_MS = 350; // card glide duration — keep in sync with `.ghost`
-const HINT_BUDGET_MS = 250;
-const HINT_MIN = 128;
-const HINT_MAX = 2048;
+const HINT_SAMPLES = 128; // == the Expert bot; more sampled worlds show no measurable gain
 
 const SUITS = {
   C: ['♣', 'green'],
@@ -25,7 +23,6 @@ const NAMES = ['You', 'West', 'North', 'East'];
 let game;
 let state; // snapshot currently on screen (the "before" state during a step)
 let busy = false;
-let hintSamples = 128;
 let selectedPass = new Set();
 
 const id = (x) => document.getElementById(x);
@@ -415,18 +412,9 @@ function winnerLine(winners) {
 
 function showHint() {
   if (busy || !state?.your_turn) return;
-  const started = performance.now();
-  const rows = JSON.parse(game.hint(hintSamples));
-  adaptHintSamples(performance.now() - started);
+  const rows = JSON.parse(game.hint(HINT_SAMPLES));
   if (!rows.length) return hideHint();
   renderHint(rows);
-}
-
-function adaptHintSamples(ms) {
-  if (ms > HINT_BUDGET_MS) hintSamples *= HINT_BUDGET_MS / ms;
-  else if (ms > HINT_BUDGET_MS / 2) hintSamples *= 1.3;
-  else return;
-  hintSamples = Math.round(Math.min(HINT_MAX, Math.max(HINT_MIN, hintSamples)));
 }
 
 function hideHint() {

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Remap the web difficulty menu to bots that are actually distinct in
+  strength: Easy `newbie`, Medium `mc:16`, Hard `mc:64`, Expert `mc:128`
+  (matching the hint solver).  The old Medium `greedy` was no stronger
+  than Easy, and Hard `mc:128`/Expert `mc:1024` were indistinguishable.
+
+### Internal
+
+- Fix the web hint at 128 sampled worlds instead of adapting it upward to
+  2048; the extra worlds cost latency with no measurable change in the
+  recommended play.
+
 ### Fixed
 
 - Monte Carlo candidate collapse no longer treats rank-adjacent cards of
