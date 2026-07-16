@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Retune the web stings: hearts break now sounds like shattering glass (a
+  noise crack plus inharmonic high partials) and the Q♠ dyad switches to
+  sawtooth with a boosted peak, compensating for the ear's reduced
+  sensitivity near 130 Hz.
 - Remap the web difficulty menu to bots that are actually distinct in
   strength: Easy `newbie`, Medium `mc:16`, Hard `mc:64`, Expert `mc:128`
   (matching the hint solver).  The old Medium `greedy` was no stronger

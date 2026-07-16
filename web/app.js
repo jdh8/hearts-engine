@@ -35,32 +35,52 @@ function chime(notes) {
     audioCtx ??= new AudioContext();
     audioCtx.resume();
     const t0 = audioCtx.currentTime;
-    for (const { freq, type, at, dur } of notes) {
-      const osc = new OscillatorNode(audioCtx, { type, frequency: freq });
+    for (const { freq, type, at, dur, peak = 0.15 } of notes) {
       const gain = new GainNode(audioCtx, { gain: 0 });
       gain.gain.setValueAtTime(0, t0 + at);
-      gain.gain.linearRampToValueAtTime(0.15, t0 + at + 0.01);
+      gain.gain.linearRampToValueAtTime(peak, t0 + at + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.001, t0 + at + dur);
-      osc.connect(gain).connect(audioCtx.destination);
-      osc.start(t0 + at);
-      osc.stop(t0 + at + dur);
+      gain.connect(audioCtx.destination);
+      let src;
+      if (type === 'noise') {
+        // White noise highpassed at `freq`, for percussive cracks.
+        const length = Math.ceil(audioCtx.sampleRate * dur);
+        const buffer = new AudioBuffer({ length, sampleRate: audioCtx.sampleRate });
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+        src = new AudioBufferSourceNode(audioCtx, { buffer });
+        src
+          .connect(new BiquadFilterNode(audioCtx, { type: 'highpass', frequency: freq }))
+          .connect(gain);
+      } else {
+        src = new OscillatorNode(audioCtx, { type, frequency: freq });
+        src.connect(gain);
+      }
+      src.start(t0 + at);
+      src.stop(t0 + at + dur);
     }
   } catch {
     // audio is best-effort
   }
 }
 
-// Bright descending crack: E5 then C5.
+// Breaking glass: a noise crack plus inharmonic partials ringing out in the
+// 2–7 kHz band, staggered like shards scattering.
 const heartsBrokenSound = () =>
   chime([
-    { freq: 659.25, type: 'sawtooth', at: 0, dur: 0.15 },
-    { freq: 523.25, type: 'sawtooth', at: 0.09, dur: 0.25 },
+    { freq: 3000, type: 'noise', at: 0, dur: 0.08, peak: 0.3 },
+    { freq: 2093, type: 'sine', at: 0.01, dur: 0.3, peak: 0.12 },
+    { freq: 2960, type: 'sine', at: 0.02, dur: 0.25, peak: 0.1 },
+    { freq: 4730, type: 'sine', at: 0.015, dur: 0.2, peak: 0.08 },
+    { freq: 6260, type: 'sine', at: 0.035, dur: 0.15, peak: 0.06 },
   ]);
-// Ominous low tritone dyad around C3.
+// Ominous low tritone dyad around C3.  Sawtooth + boosted peak: near 130 Hz
+// the ear needs ~20 dB more SPL for equal loudness, and small speakers barely
+// reproduce the fundamental, so let the harmonics carry it.
 const queenSound = () =>
   chime([
-    { freq: 130.81, type: 'triangle', at: 0, dur: 0.4 },
-    { freq: 185.0, type: 'triangle', at: 0, dur: 0.4 },
+    { freq: 130.81, type: 'sawtooth', at: 0, dur: 0.4, peak: 0.35 },
+    { freq: 185.0, type: 'sawtooth', at: 0, dur: 0.4, peak: 0.35 },
   ]);
 
 async function main() {
