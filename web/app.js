@@ -28,6 +28,41 @@ let selectedPass = new Set();
 const id = (x) => document.getElementById(x);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// One-shot synthesized stings; no assets, no game-loop impact on failure.
+let audioCtx;
+function chime(notes) {
+  try {
+    audioCtx ??= new AudioContext();
+    audioCtx.resume();
+    const t0 = audioCtx.currentTime;
+    for (const { freq, type, at, dur } of notes) {
+      const osc = new OscillatorNode(audioCtx, { type, frequency: freq });
+      const gain = new GainNode(audioCtx, { gain: 0 });
+      gain.gain.setValueAtTime(0, t0 + at);
+      gain.gain.linearRampToValueAtTime(0.15, t0 + at + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + at + dur);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t0 + at);
+      osc.stop(t0 + at + dur);
+    }
+  } catch {
+    // audio is best-effort
+  }
+}
+
+// Bright descending crack: E5 then C5.
+const heartsBrokenSound = () =>
+  chime([
+    { freq: 659.25, type: 'sawtooth', at: 0, dur: 0.15 },
+    { freq: 523.25, type: 'sawtooth', at: 0.09, dur: 0.25 },
+  ]);
+// Ominous low tritone dyad around C3.
+const queenSound = () =>
+  chime([
+    { freq: 130.81, type: 'triangle', at: 0, dur: 0.4 },
+    { freq: 185.0, type: 'triangle', at: 0, dur: 0.4 },
+  ]);
+
 async function main() {
   await init();
 
@@ -131,6 +166,8 @@ async function finishRound() {
 async function step(next) {
   const move = next.last_move;
   if (move?.kind === 'play' && move.card) {
+    if (move.card === 'Q♠') queenSound();
+    else if (!state?.hearts_broken && next.hearts_broken) heartsBrokenSound();
     const from = actorAnchor(move.actor, move.card);
     await flyCard(from, id(`trick-slot-${move.actor}`), cardFromCode(move.card));
   } else if (move?.kind === 'pass') {

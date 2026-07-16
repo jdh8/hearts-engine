@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The web UI plays a short synthesized sting when hearts break and an
+  ominous one when Q♠ hits the table (WebAudio, no sound assets).
 - Offer to end a round early once all 26 points are captured.  The web UI
   shows an "End round" button and the terminal `play` example asks before the
   next human play, both jumping straight to the round result.  The leftover
