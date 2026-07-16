@@ -13,6 +13,10 @@
 # VS Code config
 /.vscode/
 
+# .NET build output of the tournament shim
+/tournament/CfrShim/bin/
+/tournament/CfrShim/obj/
+
 # Claude and AI context
 /.claude/*
 !/.claude/skills/

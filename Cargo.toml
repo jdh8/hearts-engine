@@ -12,6 +12,8 @@ readme = "README.md"
 license = "Apache-2.0"
 categories = ["game-development", "games", "simulation"]
 keywords = ["hearts", "cards", "ai", "bot", "monte-carlo"]
+# The cross-engine tournament bridge (F#) stays out of the published crate.
+exclude = ["/tournament"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -57,6 +59,10 @@ required-features = ["rand"]
 
 [[example]]
 name = "tune"
+required-features = ["rand"]
+
+[[example]]
+name = "vs_cfr"
 required-features = ["rand"]
 
 [profile.dev.package."*"]

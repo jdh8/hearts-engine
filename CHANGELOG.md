@@ -30,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Cross-engine tournament harness against the Deep CFR player of
+  [brianberns/Hearts](https://github.com/brianberns/Hearts), the strongest
+  open-source Hearts bot we know of: an F# shim (`tournament/CfrShim`)
+  rebuilds his `InformationSet` from our public history and queries his
+  model over Fable.Remoting, and `examples/vs_cfr.rs` mirrors his 2v2
+  duplicate-deal benchmark with paired standard errors, cross-checking both
+  engines' legal-action sets on every decision.  Excluded from the
+  published crate (his repo has no license, so it is referenced in place,
+  never vendored).
 - Fix the web hint at 128 sampled worlds instead of adapting it upward to
   2048; the extra worlds cost latency with no measurable change in the
   recommended play.

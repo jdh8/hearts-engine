@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Sibling clone of https://github.com/brianberns/Hearts (no license,
+         so it is referenced in place, never vendored). Override with
+         -p:HeartsRepo=/path/to/clone -->
+    <HeartsRepo Condition="'$(HeartsRepo)' == ''">$(MSBuildThisFileDirectory)../../../brianberns-Hearts</HeartsRepo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(HeartsRepo)/Hearts/Hearts.fsproj" />
+    <PackageReference Include="Fable.Remoting.DotnetClient" Version="3.36.0" />
+  </ItemGroup>
+
+</Project>
