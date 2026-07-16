@@ -279,14 +279,18 @@ impl<R: Rng> MonteCarloBot<R> {
     /// with the bot's own pick flagged — the read a solver or hint view
     /// shows
     ///
-    /// Returns empty when there is nothing to weigh: no real choice (a
-    /// single legal play, or every legal play in one equivalence class), a
-    /// finished round, or a view no consistent world can be sampled for
-    /// (e.g. a seat mid-pass).
+    /// When every legal play collapses into one equivalence class the read
+    /// is still offered, against each legal play tied: a human cannot see
+    /// from the hand alone that the ranks between the cards are already gone,
+    /// so refusing the read would look like a bug.
+    ///
+    /// Returns empty only when there is genuinely nothing to weigh: a single
+    /// legal play, a finished round, or a view no consistent world can be
+    /// sampled for (e.g. a seat mid-pass).
     #[must_use]
     pub fn assess(&mut self, view: &View<'_>) -> Vec<Assessment> {
         let candidates = Self::candidates(view);
-        if candidates.len() < 2 {
+        if candidates.is_empty() {
             return Vec::new();
         }
         let worlds = self.sample_worlds(view, self.samples);
@@ -296,17 +300,39 @@ impl<R: Rng> MonteCarloBot<R> {
             return Vec::new();
         }
         let scored = score_worlds(view, &worlds, &candidates);
+        let mean = |(equities, ev_sum): &(Vec<f64>, f64)| {
+            let n = equities.len() as f64;
+            (equities.iter().sum::<f64>() / n, ev_sum / n)
+        };
+
+        // A single candidate means the legal plays all collapsed into one
+        // class — every one interchangeable.  List them as tied so the panel
+        // says "any of these" instead of going blank.
+        if candidates.len() == 1 {
+            let (equity, ev) = mean(&scored[0]);
+            return view
+                .legal_plays()
+                .into_iter()
+                .map(|card| Assessment {
+                    action: format!("play {card}"),
+                    equity,
+                    ev,
+                    recommended: true,
+                })
+                .collect();
+        }
+
         let best = recommended(&scored);
         let mut out: Vec<Assessment> = candidates
             .iter()
             .zip(&scored)
             .enumerate()
-            .map(|(i, (candidate, (equities, ev_sum)))| {
-                let n = equities.len() as f64;
+            .map(|(i, (candidate, score))| {
+                let (equity, ev) = mean(score);
                 Assessment {
                     action: candidate.label.clone(),
-                    equity: equities.iter().sum::<f64>() / n,
-                    ev: ev_sum / n,
+                    equity,
+                    ev,
                     recommended: i == best,
                 }
             })
@@ -803,6 +829,68 @@ mod tests {
 
         let mut solver = MonteCarloBot::new(StdRng::seed_from_u64(7)).samples(64);
         assert!(!solver.assess(&view).is_empty(), "the hint offers a read");
+    }
+
+    #[test]
+    fn assess_lists_an_all_equivalent_class_rather_than_refusing() {
+        // South follows a led spade holding only 5♠ and 7♠.  From the hand
+        // they look like two separate plays; but 6♠ is already on the table,
+        // so they are interchangeable — one class, one candidate.  A human
+        // cannot read that off the hand, so the hint must still list both
+        // tied instead of going blank.
+        let hand = |cards: &str| -> Hand {
+            cards
+                .split_whitespace()
+                .map(|c| c.parse().expect("valid card"))
+                .collect()
+        };
+        let hands = [
+            hand("2C 3C 4C 2S 3S 4S 2D 3D 4D 5D 2H 3H 4H"), // North: leads 2♣
+            hand("AC KC 6S 8S 9S TS 6D 7D 8D 9D 5H 6H 7H"), // East: wins T1, leads 6♠
+            hand("5C 6C 7C 5S 7S TD JD QD KD AD 8H 9H TH"), // South: spades are 5♠ 7♠ only
+            hand("8C 9C TC JC QC JS QS KS AS JH QH KH AH"), // West
+        ];
+        let mut round = Round::from_deal(Rules::new(), PassDirection::Hold, hands)
+            .expect("a full partition deals");
+        for (seat, card) in [
+            (Seat::North, "2C"),
+            (Seat::East, "AC"),
+            (Seat::South, "5C"),
+            (Seat::West, "8C"),
+            (Seat::East, "6S"), // East won trick 1; now it leads the gap card
+        ] {
+            round
+                .play(seat, card.parse().expect("valid card"))
+                .expect("a legal scripted play");
+        }
+
+        let table = Table::new(round);
+        assert_eq!(
+            table.turn(),
+            Some(Seat::South),
+            "South is to follow the spade"
+        );
+        let view = table.view(Seat::South);
+
+        // One equivalence class, so the bot weighs a single candidate...
+        assert_eq!(
+            play_candidates(&view).len(),
+            1,
+            "5♠ and 7♠ collapse across the played 6♠",
+        );
+
+        // ...yet the hint lists both legal plays, tied and flagged.
+        let mut solver = MonteCarloBot::new(StdRng::seed_from_u64(11)).samples(64);
+        let rows = solver.assess(&view);
+        assert_eq!(rows.len(), 2, "both equivalent spades are shown");
+        assert!(
+            rows.iter().all(|r| r.recommended),
+            "an equivalent class is all-tied",
+        );
+        assert!(
+            rows[0].equity == rows[1].equity && rows[0].ev == rows[1].ev,
+            "equivalent plays carry the same read",
+        );
     }
 
     #[test]

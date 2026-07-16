@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The solver/hint no longer refuses a read when every legal play collapses
+  into one equivalence class; it lists the interchangeable plays tied, since
+  a human cannot tell from the hand alone that the ranks between them are
+  already gone.
 - Monte Carlo candidate collapse no longer treats rank-adjacent cards of
   unequal penalty value as interchangeable, so Q♠ is weighed as its own play
   and the solver/hint stops refusing a J♠/Q♠ choice.
