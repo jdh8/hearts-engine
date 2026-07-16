@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Offer to end a round early once all 26 points are captured.  The web UI
+  shows an "End round" button and the terminal `play` example asks before the
+  next human play, both jumping straight to the round result.  The leftover
+  scoreless tricks are drained through the real engine, so the outcome is
+  identical.  New predicate `Table::points_settled`.
+
 ### Changed
 
 - Remap the web difficulty menu to bots that are actually distinct in

@@ -116,6 +116,51 @@ mod seeded {
     }
 
     #[test]
+    fn a_settled_round_freezes_the_tally() {
+        // The premise behind `points_settled`: once every point is in a
+        // completed trick, the per-seat tally equals the round's final result,
+        // so ending early cannot change any score.  Scan deals for one that
+        // settles before the last trick, then check the frozen tally holds.
+        let mut checked = false;
+        for seed in 0..64 {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let mut table = Table::deal(Rules::new(), PassDirection::Left, &mut rng);
+            let [mut n, mut e, mut s, mut w] = [HeuristicBot::new(); 4];
+            let mut frozen: Option<[u8; 4]> = None;
+
+            let result = loop {
+                if frozen.is_none() && table.points_settled() {
+                    let mut tally = [0u8; 4];
+                    for seat in Seat::ALL {
+                        tally[seat as usize] = table.round().points_taken(seat);
+                    }
+                    frozen = Some(tally);
+                }
+                let Some(seat) = table.turn() else {
+                    break table.round().result().expect("a turnless round finished");
+                };
+                let bot: &mut dyn Strategy = match seat {
+                    Seat::North => &mut n,
+                    Seat::East => &mut e,
+                    Seat::South => &mut s,
+                    Seat::West => &mut w,
+                };
+                table.step(bot).unwrap();
+            };
+
+            if let Some(frozen) = frozen {
+                assert_eq!(frozen, result.points(), "the settled tally is final");
+                checked = true;
+                break;
+            }
+        }
+        assert!(
+            checked,
+            "some deal settles its points before the last trick"
+        );
+    }
+
+    #[test]
     fn a_whole_game_settles() {
         let mut rng = StdRng::seed_from_u64(7);
         let mut game = Game::new(Rules::new());

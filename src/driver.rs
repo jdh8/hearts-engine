@@ -115,6 +115,24 @@ impl Table {
         }
     }
 
+    /// Whether every penalty card already sits in a completed trick, freezing
+    /// the round's point tally
+    ///
+    /// True only mid-play: once it holds, the remaining tricks are all
+    /// scoreless and cannot change any seat's result, so an interactive caller
+    /// may offer to end the round and jump straight to the outcome.  Reads the
+    /// won tricks, not [`Round::played`], so it stays false while the last
+    /// penalty card is still in the live, unresolved trick.
+    #[must_use]
+    pub fn points_settled(&self) -> bool {
+        self.round.phase() == Phase::Playing
+            && Seat::ALL
+                .into_iter()
+                .map(|seat| u16::from(self.round.points_taken(seat)))
+                .sum::<u16>()
+                == 26
+    }
+
     /// The legally visible information for one seat
     #[must_use]
     pub const fn view(&self, seat: Seat) -> View<'_> {

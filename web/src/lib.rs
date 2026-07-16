@@ -362,6 +362,25 @@ impl Core {
         }
     }
 
+    /// End a settled round early: drain its remaining scoreless tricks with a
+    /// bot and record the outcome, jumping straight to the showdown.  A no-op
+    /// until [`Table::points_settled`] holds, so the frozen score carries
+    /// through to the same [`RoundResult`] the round would reach by hand.
+    fn finish_round(&mut self) {
+        if !self.table.points_settled() {
+            return;
+        }
+        // `step` hands the bot the acting seat's view, so any bot plays legally
+        // for every remaining seat — the human's included.
+        while self.table.turn().is_some() {
+            self.table
+                .step(&mut *self.bots[0])
+                .expect("the bots always choose legal actions");
+        }
+        self.last_move = None;
+        self.record_round();
+    }
+
     /// Clear the showdown and deal the next round.  A no-op unless a
     /// finished round is waiting on the player's Continue click.
     fn next_deal(&mut self) {
@@ -392,6 +411,7 @@ impl Core {
             phase: phase_name(round.phase()),
             pass_direction: round.direction().to_string(),
             your_turn: interactive,
+            points_settled: self.table.points_settled(),
             hand: view
                 .hand()
                 .into_iter()
@@ -509,6 +529,9 @@ struct Snapshot {
     phase: &'static str,
     pass_direction: String,
     your_turn: bool,
+    /// Every penalty card is in a completed trick: the round's points are
+    /// frozen and the UI may offer to end it early.
+    points_settled: bool,
     hand: Vec<CardJson>,
     /// The trick in progress, one optional card code per screen seat.
     trick: [Option<String>; 4],
@@ -605,6 +628,14 @@ impl WebGame {
     /// Deal the next round after the between-rounds pause.
     pub fn next_deal(&mut self) -> String {
         self.core.next_deal();
+        self.snapshot()
+    }
+
+    /// End a settled round early: drain its scoreless tricks and jump to the
+    /// showdown.  A no-op until the round's points are settled
+    /// (`points_settled` in the snapshot).
+    pub fn finish_round(&mut self) -> String {
+        self.core.finish_round();
         self.snapshot()
     }
 

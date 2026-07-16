@@ -101,6 +101,18 @@ fn read_command(prompt: &str) -> Option<String> {
     }
 }
 
+/// Offer to skip the scoreless run-out once every point is in.  Empty input
+/// or `y`/`yes` accepts; `quit` (or EOF) exits; anything else declines and the
+/// round plays on to the end.
+fn prompt_end_round() -> bool {
+    let answer = read_command("All points are in — end the round now? [Y/n]:")
+        .unwrap_or_else(|| "quit".into());
+    if answer == "quit" {
+        std::process::exit(0);
+    }
+    answer.is_empty() || answer == "y" || answer == "yes"
+}
+
 /// Resolve user text to a card.  A full name (`QS`, `Q♠`) is taken as
 /// written; a lone rank (`5`) or suit (`♠`, `s`) resolves only when the hand
 /// holds exactly one matching card, so the common case needs no full name.
@@ -295,8 +307,23 @@ fn main() -> Result<()> {
         println!();
         println!("=== Round {number} (pass {}) ===", game.next_direction());
         let mut table = Table::new(game.deal(&mut rng)).scores(game.scores());
+        let mut ended = false;
 
         while let Some(seat) = table.turn() {
+            // Once every point is in, the tally is frozen: offer to skip the
+            // scoreless run-out and jump to the result.  Ask at most once.
+            if seat == HUMAN && !ended && table.points_settled() {
+                ended = true;
+                if prompt_end_round() {
+                    while let Some(seat) = table.turn() {
+                        let bot = bots[if seat == HUMAN { Seat::North } else { seat } as usize]
+                            .as_deref_mut()
+                            .expect("every drained seat has a bot");
+                        table.step(bot)?;
+                    }
+                    break;
+                }
+            }
             let phase = table.round().phase();
             let played = table.round().played();
             let tricks = table.round().tricks().len();

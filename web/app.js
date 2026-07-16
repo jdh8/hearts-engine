@@ -115,6 +115,16 @@ async function continueGame() {
   setBusy(false);
 }
 
+// End a round whose points are already settled: jump straight to the
+// showdown, skipping the scoreless run-out (no per-card animation).
+async function finishRound() {
+  if (busy || !state?.points_settled) return;
+  setBusy(true);
+  state = JSON.parse(game.finish_round());
+  render(state);
+  setBusy(false);
+}
+
 // Animate the move that produced `next` over the current view, then render it.
 // A fourth play is briefly rendered as a complete trick before all four cards
 // sweep toward its winner.
@@ -364,6 +374,9 @@ function renderActions(snapshot) {
     return;
   }
   box.append(text('Choose a highlighted card to play.', 'prompt'));
+  if (snapshot.points_settled) {
+    box.append(button('End round', finishRound, 'end-round'));
+  }
 }
 
 function confirmPass() {
