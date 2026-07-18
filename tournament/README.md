@@ -9,8 +9,9 @@ by the per-deal zero-sum payoff `mean(others' points) − own points`.
 
 ## Setup
 
-Brian's repo has **no license**, so it is referenced in place as a sibling
-clone and never vendored or redistributed:
+Brian's repo is **GPL3**, so it is referenced in place as a sibling
+clone and never vendored or redistributed (keeping the copyleft off this
+tree):
 
 ```sh
 cd ../..   # the directory containing hearts-engine

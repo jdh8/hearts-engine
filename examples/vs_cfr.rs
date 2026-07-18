@@ -242,6 +242,36 @@ fn payoffs(scores: [u16; 4]) -> [f64; 4] {
     scores.map(|own| f64::from(sum - own) / 3.0 - f64::from(own))
 }
 
+/// A results summary over the pairs completed so far.  Printed periodically
+/// to stderr as a checkpoint — a throttled run has idle time to spare, so the
+/// logging is free — and once to stdout at the end, so a crash or an early
+/// stop never loses the whole run.
+fn report(
+    pair_payoffs: &[f64],
+    points: [u64; 2],
+    moons: [u32; 2],
+    samples: u32,
+    elapsed: Duration,
+) -> String {
+    let n = pair_payoffs.len() as f64;
+    let mean = pair_payoffs.iter().sum::<f64>() / n;
+    let var = pair_payoffs.iter().map(|t| (t - mean).powi(2)).sum::<f64>() / (n - 1.0).max(1.0);
+    let se = (var / n).sqrt();
+    let deals = pair_payoffs.len() as u64 * 2;
+    let d = deals as f64;
+    format!(
+        "{deals} deals ({} pairs) in {elapsed:.1?}\n\
+         deep-cfr payoff per seat-deal: {mean:+.3} ± {se:.3} (paired SE; positive favors CFR)\n\
+         penalty points per deal (moon-adjusted): deep-cfr {:.2}, mc:{samples} {:.2}\n\
+         moons: mc {} / cfr {}",
+        pair_payoffs.len(),
+        points[1] as f64 / d,
+        points[0] as f64 / d,
+        moons[0],
+        moons[1],
+    )
+}
+
 fn main() -> Result<()> {
     let Some(config) = parse_args()? else {
         usage();
@@ -293,30 +323,31 @@ fn main() -> Result<()> {
             }
         }
         pair_payoffs.push(payoff_sum / 4.0);
+        if (pair + 1).is_multiple_of(20) {
+            eprintln!(
+                "\n[checkpoint {}/{pairs} pairs]\n{}",
+                pair + 1,
+                report(
+                    &pair_payoffs,
+                    points,
+                    moons,
+                    config.samples,
+                    start.elapsed()
+                ),
+            );
+        }
         eprint!("\r{}/{pairs} deal pairs", pair + 1);
     }
     eprintln!();
-
-    let n = f64::from(pairs);
-    let mean = pair_payoffs.iter().sum::<f64>() / n;
-    let var = pair_payoffs.iter().map(|t| (t - mean).powi(2)).sum::<f64>() / (n - 1.0).max(1.0);
-    let se = (var / n).sqrt();
-    let deal_count = f64::from(config.deals);
-
     println!(
-        "{} deals ({pairs} duplicate pairs) in {:.1?}",
-        config.deals,
-        start.elapsed(),
+        "{}",
+        report(
+            &pair_payoffs,
+            points,
+            moons,
+            config.samples,
+            start.elapsed()
+        ),
     );
-    println!(
-        "deep-cfr payoff per seat-deal: {mean:+.3} ± {se:.3} (paired SE; positive favors CFR)"
-    );
-    println!(
-        "penalty points per deal (moon-adjusted): deep-cfr {:.2}, mc:{} {:.2}",
-        points[1] as f64 / deal_count,
-        config.samples,
-        points[0] as f64 / deal_count,
-    );
-    println!("moons: mc {} / cfr {}", moons[0], moons[1]);
     Ok(())
 }

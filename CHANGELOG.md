@@ -37,8 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model over Fable.Remoting, and `examples/vs_cfr.rs` mirrors his 2v2
   duplicate-deal benchmark with paired standard errors, cross-checking both
   engines' legal-action sets on every decision.  Excluded from the
-  published crate (his repo has no license, so it is referenced in place,
-  never vendored).
+  published crate: his repo is GPL3, so it is referenced in place as a
+  sibling clone, never vendored, to keep the copyleft off our tree.
+- Harden the tournament run against Brian's live server: the shim retries
+  `GetActionIndex` on transient HTTP timeouts, and the harness checkpoints
+  running results (payoff, points, moons) to stderr every 20 pairs so a
+  dropped connection never loses a multi-hour run.  First result over 800
+  throttled deals: his Deep CFR beats `mc:128` by +1.28 ± 0.21 payoff per
+  seat-deal, shooting the moon in ~18 % of deals to our ~1 %.
 - Fix the web hint at 128 sampled worlds instead of adapting it upward to
   2048; the extra worlds cost latency with no measurable change in the
   recommended play.

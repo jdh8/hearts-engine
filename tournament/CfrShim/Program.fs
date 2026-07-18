@@ -102,6 +102,16 @@ let main argv =
         Remoting.createApi baseUrl
             |> Remoting.withRouteBuilder routeBuilder
             |> Remoting.buildProxy<IHeartsApi>
+    // The link to Brian's server is long and his model is served live, so a
+    // single request can time out (TaskCanceledException) or drop. Retry a
+    // few times before giving up rather than aborting a multi-hour run.
+    let rec getActionIndex infoSet attempts =
+        try
+            proxy.GetActionIndex infoSet |> Async.RunSynchronously
+        with e when attempts > 1 ->
+            eprintfn "shim: retrying after %s (%d attempts left)" e.Message (attempts - 1)
+            System.Threading.Thread.Sleep 2000
+            getActionIndex infoSet (attempts - 1)
     let mutable line = Console.ReadLine()
     while not (isNull line) do
         if line.Trim() <> "" then
@@ -111,9 +121,7 @@ let main argv =
                 match infoSet.LegalActions with
                     | [| only |] -> only   // spare the server a request
                     | actions ->
-                        let index =
-                            proxy.GetActionIndex infoSet
-                                |> Async.RunSynchronously
+                        let index = getActionIndex infoSet 15
                         actions[index]
             let legal =
                 infoSet.LegalActions
