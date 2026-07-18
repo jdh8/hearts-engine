@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `MonteCarloBot` now defends against the moon at its live decision,
+  reusing the same reactive overlay as `HeuristicBot` (break a lone
+  opponent's sweep once they pass 8 points).  Its rollout policy models
+  every opponent as a greedy ducker who never shoots, so the search was
+  blind to a moon in progress — in the Deep CFR tournament mc:128 was shot
+  the moon in 142 of 800 deals.  The overlay draws no randomness, so
+  seeded play stays reproducible, and the strength tripwire confirms it
+  costs nothing against greedy opponents.
 - Retune the web stings: hearts break now sounds like shattering glass (a
   noise crack plus inharmonic high partials) and the Q♠ dyad switches to
   sawtooth with a boosted peak, compensating for the ear's reduced

@@ -7,7 +7,7 @@
 //! hands with the public history replayed — and rollouts run on the real
 //! state machine.
 
-use crate::heuristic::{greedy_pass, greedy_play, pass_score, rollout_play};
+use crate::heuristic::{greedy_pass, greedy_play, moon_defense, pass_score, rollout_play};
 use crate::{Strategy, View};
 use hearts::{Card, Hand, PassDirection, Phase, Rank, Round, RoundResult, Rules, Seat, Suit};
 use rand::{Rng, RngExt as _};
@@ -586,6 +586,14 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
     }
 
     fn play_card(&mut self, view: &View<'_>) -> Card {
+        // Reactive moon defense: the rollout policy models every opponent as
+        // a greedy ducker who never shoots the moon, so the search is blind
+        // to a moon in progress.  Break it with the same overlay HeuristicBot
+        // uses (threshold 8, its default).  Draws no randomness, so seeded
+        // play stays reproducible.
+        if let Some(card) = moon_defense(view, 8) {
+            return card;
+        }
         let legal = view.legal_plays();
         if legal.len() == 1 {
             // A forced card needs no rollout — and draws no randomness,
@@ -984,5 +992,82 @@ mod tests {
         let first = bot.play_card(&table.view(me));
         let mut again = MonteCarloBot::new(StdRng::seed_from_u64(11)).samples(64);
         assert_eq!(first, again.play_card(&table.view(me)));
+    }
+
+    #[test]
+    fn breaks_a_moon_the_rollouts_never_see() {
+        // The rollout policy models every opponent as a greedy ducker who
+        // never shoots, so a moon in progress is invisible to the search.
+        // Drive a position where East has already swept the Q♠ (13 points),
+        // then confirm the MC bot takes the trick to break the sweep instead
+        // of ducking the way its own rollout policy would.
+        fn card(text: &str) -> Card {
+            text.parse().expect("a valid card")
+        }
+        fn hand(cards: &[&str]) -> Hand {
+            cards.iter().map(|c| card(c)).collect()
+        }
+        struct Fixed(Card);
+        impl Strategy for Fixed {
+            fn pass_cards(&mut self, _: &View<'_>) -> [Card; 3] {
+                unreachable!()
+            }
+            fn play_card(&mut self, _: &View<'_>) -> Card {
+                self.0
+            }
+        }
+
+        let hands = [
+            // North: leads 2♣, and ends holding S3 (duck) vs SK (break).
+            hand(&[
+                "2♣", "3♣", "3♠", "K♠", "2♥", "3♥", "4♥", "5♥", "6♥", "7♥", "8♥", "9♥", "T♥",
+            ]),
+            // East: wins two club tricks and scoops the dumped Q♠.
+            hand(&[
+                "A♣", "K♣", "Q♣", "J♣", "5♠", "6♠", "7♠", "8♠", "9♠", "T♠", "J♠", "A♠", "2♦",
+            ]),
+            // South: void in clubs, dumps Q♠ into East's second trick.
+            hand(&[
+                "Q♠", "2♠", "4♠", "J♥", "Q♥", "K♥", "A♥", "3♦", "4♦", "5♦", "6♦", "7♦", "8♦",
+            ]),
+            // West: void in spades and hearts, never overtakes the sweep.
+            hand(&[
+                "4♣", "5♣", "6♣", "7♣", "8♣", "9♣", "T♣", "9♦", "T♦", "J♦", "Q♦", "K♦", "A♦",
+            ]),
+        ];
+        let round = Round::from_deal(Rules::new(), PassDirection::Hold, hands).unwrap();
+        let mut table = Table::new(round);
+        let script = [
+            (Seat::North, "2♣"), // trick 1: clubs, East wins with A♣
+            (Seat::East, "A♣"),
+            (Seat::South, "3♦"), // void in clubs, sheds a diamond (no T1 penalties)
+            (Seat::West, "4♣"),
+            (Seat::East, "K♣"), // trick 2: East leads, South dumps the queen
+            (Seat::South, "Q♠"),
+            (Seat::West, "5♣"),
+            (Seat::North, "3♣"),
+            (Seat::East, "5♠"), // trick 3: East leads a low spade into North
+            (Seat::South, "4♠"),
+            (Seat::West, "A♦"),
+        ];
+        for (seat, text) in script {
+            assert_eq!(table.turn(), Some(seat));
+            table.step(&mut Fixed(card(text))).unwrap();
+        }
+
+        let view = table.view(Seat::North);
+        assert_eq!(view.points_taken(Seat::East), 13, "East swept the queen");
+        // Greedy — the rollout policy — would duck with the 3♠; the moon
+        // defense overrides it to break the sweep with the cheapest winner.
+        assert_eq!(
+            greedy_play(
+                view.legal_plays(),
+                view.current_trick().unwrap(),
+                view.played()
+            ),
+            card("3♠")
+        );
+        let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(1)).samples(64);
+        assert_eq!(bot.play_card(&view), card("K♠"));
     }
 }

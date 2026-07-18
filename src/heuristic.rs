@@ -200,23 +200,69 @@ impl HeuristicBot {
     pub const fn with_config(config: HeuristicConfig) -> Self {
         Self { config }
     }
+}
 
-    /// The opponent who has swept every point so far, once the sweep
-    /// weighs enough to smell like a moon attempt
-    fn moon_threat(&self, view: &View<'_>) -> Option<Seat> {
-        let mut sweeper = None;
-        for seat in Seat::ALL {
-            if view.points_taken(seat) > 0 {
-                if sweeper.is_some() {
-                    return None;
-                }
-                sweeper = Some(seat);
+/// The opponent who has swept every point so far, once the sweep weighs at
+/// least `threshold` — enough to smell like a moon attempt
+fn moon_threat(view: &View<'_>, threshold: u8) -> Option<Seat> {
+    let mut sweeper = None;
+    for seat in Seat::ALL {
+        if view.points_taken(seat) > 0 {
+            if sweeper.is_some() {
+                return None;
             }
+            sweeper = Some(seat);
         }
-        sweeper.filter(|&seat| {
-            seat != view.seat() && view.points_taken(seat) >= self.config.moon_defense
-        })
     }
+    sweeper.filter(|&seat| seat != view.seat() && view.points_taken(seat) >= threshold)
+}
+
+/// The knowledge-based moon-defense play, shared by [`HeuristicBot`] and the
+/// [`MonteCarloBot`](crate::MonteCarloBot)'s live decision.
+///
+/// When a single opponent has swept at least `threshold` points and is
+/// winning the current trick, stop ducking: beat them as cheaply as possible
+/// (but never with our own Q♠ if avoidable), and when we cannot beat them, at
+/// least gift them no penalty card toward the sweep.  `None` when no defense
+/// applies, so the caller falls back to its normal policy.  The Monte Carlo
+/// rollouts model opponents as greedy duckers who never shoot the moon, so
+/// the search is blind to a moon in progress; this reactive overlay covers
+/// the gap.
+pub(crate) fn moon_defense(view: &View<'_>, threshold: u8) -> Option<Card> {
+    let threat = moon_threat(view, threshold)?;
+    let trick = view.current_trick()?;
+    let led = trick.suit()?;
+    if trick.winner() != Some(threat) {
+        return None;
+    }
+    let legal = view.legal_plays();
+    let winner = winning_card(trick).expect("a led trick has a winning card");
+    let follow = legal[led];
+    if follow.is_empty() {
+        // Void: dump the most dangerous card that carries no points into the
+        // sweeper's trick.
+        let harmless = legal - Hand::PENALTIES;
+        return harmless.into_iter().max_by_key(|card| card.rank);
+    }
+    // Beat them as cheaply as possible — taking a trick with our own Q♠
+    // costs more than the sweep it denies.
+    let mut beat = follow - below(winner.rank) - Holding::from_rank(winner.rank);
+    if led == Suit::Spades {
+        beat -= Holding::from_rank(Rank::Q);
+    }
+    if let Some(rank) = beat.iter().next() {
+        return Some(Card { suit: led, rank });
+    }
+    // Can't beat the sweep: duck plainly — and never ride the dead queen
+    // into the sweeper's trick.
+    let mut duck = follow & below(winner.rank);
+    if led == Suit::Spades {
+        let harmless = duck - Holding::from_rank(Rank::Q);
+        if !harmless.is_empty() {
+            duck = harmless;
+        }
+    }
+    duck.iter().next_back().map(|rank| Card { suit: led, rank })
 }
 
 impl Strategy for HeuristicBot {
@@ -225,51 +271,11 @@ impl Strategy for HeuristicBot {
     }
 
     fn play_card(&mut self, view: &View<'_>) -> Card {
+        if let Some(card) = moon_defense(view, self.config.moon_defense) {
+            return card;
+        }
         let legal = view.legal_plays();
         let trick = view.current_trick().expect("a play decision has a trick");
-
-        // Moon defense: when the sweeper is winning this trick, stop
-        // ducking — beat them as cheaply as possible (but never with our
-        // own Q♠ if avoidable), and when we cannot beat them, at least
-        // gift them no penalty card toward the sweep.
-        if let Some(threat) = self.moon_threat(view)
-            && let Some(led) = trick.suit()
-            && trick.winner() == Some(threat)
-        {
-            let winner = winning_card(trick).expect("a led trick has a winning card");
-            let follow = legal[led];
-            if follow.is_empty() {
-                // Void: dump the most dangerous card that carries no
-                // points into the sweeper's trick.
-                let harmless = legal - Hand::PENALTIES;
-                if let Some(card) = harmless.into_iter().max_by_key(|card| card.rank) {
-                    return card;
-                }
-            } else {
-                // Beat them as cheaply as possible — taking a trick with
-                // our own Q♠ costs more than the sweep it denies.
-                let mut beat = follow - below(winner.rank) - Holding::from_rank(winner.rank);
-                if led == Suit::Spades {
-                    beat -= Holding::from_rank(Rank::Q);
-                }
-                if let Some(rank) = beat.iter().next() {
-                    return Card { suit: led, rank };
-                }
-                // Can't beat the sweep: duck plainly — and never ride the
-                // dead queen into the sweeper's trick.
-                let mut duck = follow & below(winner.rank);
-                if led == Suit::Spades {
-                    let harmless = duck - Holding::from_rank(Rank::Q);
-                    if !harmless.is_empty() {
-                        duck = harmless;
-                    }
-                }
-                if let Some(rank) = duck.iter().next_back() {
-                    return Card { suit: led, rank };
-                }
-            }
-        }
-
         greedy_play(legal, trick, view.played())
     }
 
