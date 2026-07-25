@@ -7,7 +7,9 @@
 //! hands with the public history replayed — and rollouts run on the real
 //! state machine.
 
-use crate::heuristic::{greedy_pass, greedy_play, moon_defense, pass_score, rollout_play};
+use crate::heuristic::{
+    greedy_pass, greedy_play, moon_defense, pass_score, rollout_play, shoot_play,
+};
 use crate::{Strategy, View};
 use hearts::{Card, Hand, PassDirection, Phase, Rank, Round, RoundResult, Rules, Seat, Suit};
 use rand::{Rng, RngExt as _};
@@ -26,11 +28,19 @@ const PASS_POOL: usize = 6;
 /// to an unbatched run.
 const BATCH: usize = 32;
 
+/// What the rollouts said about one candidate: its per-world equities, its
+/// summed round points, and how many of those worlds it shot the moon in
+type Scored = (Vec<f64>, f64, u32);
+
 /// One candidate action to score: the move a [`Strategy`] method would
 /// return, paired with its rendered [`Assessment::action`] label
 struct Candidate {
     label: String,
     choice: Choice,
+    /// Whether to roll the continuation as a moon attempt by the deciding
+    /// seat rather than with the greedy policy.  Shooting is a plan, not a
+    /// single card, so it lives on the rollout instead of on [`Choice`].
+    shoot: bool,
 }
 
 /// A typed candidate move
@@ -43,8 +53,9 @@ enum Choice {
 }
 
 impl Choice {
-    /// Apply the move to a world and play it out greedily.
-    fn roll(self, mut round: Round, me: Seat) -> RoundResult {
+    /// Apply the move to a world and play it out: greedily, or with `me`
+    /// shooting the moon against a table that defends.
+    fn roll(self, mut round: Round, me: Seat, shoot: bool) -> RoundResult {
         match self {
             Self::Pass(cards) => round
                 .pass(me, cards.into_iter().collect())
@@ -54,7 +65,7 @@ impl Choice {
                 .expect("a candidate play is legal in every sampled world"),
         }
         while let Some(seat) = round.turn() {
-            let card = rollout_play(&round, seat);
+            let card = rollout_play(&round, seat, shoot.then_some(me));
             round
                 .play(seat, card)
                 .expect("the rollout policy picks from legal_plays");
@@ -82,11 +93,21 @@ impl Choice {
 /// remaining worlds are never rolled at all — so an easy decision costs a
 /// fraction of the full sample count.
 ///
+/// One candidate per decision is a moon attempt, rolled with the deciding
+/// seat shooting and the other three defending instead of ducking.  It has
+/// to clear the usual significance gate *and* actually reach the moon in
+/// most of the sampled worlds, and once chosen it is carried to the end of
+/// the round rather than re-argued each trick — a shot re-decided per trick
+/// takes the points and misses the moon.
+///
 /// The bot owns its random number generator, so a seeded generator makes
 /// its play reproducible.
 pub struct MonteCarloBot<R: Rng> {
     rng: R,
     samples: u32,
+    /// Whether a moon attempt is under way, carried across the tricks of
+    /// one round so the search does not re-litigate it every turn.
+    shooting: bool,
 }
 
 /// One candidate action's Monte Carlo assessment, for a solver or hint view
@@ -119,7 +140,11 @@ pub struct Assessment {
 impl<R: Rng> MonteCarloBot<R> {
     /// A bot with default strength: 128 worlds per decision
     pub const fn new(rng: R) -> Self {
-        Self { rng, samples: 128 }
+        Self {
+            rng,
+            samples: 128,
+            shooting: false,
+        }
     }
 
     /// Set how many worlds each decision samples
@@ -271,7 +296,7 @@ impl<R: Rng> MonteCarloBot<R> {
     fn choose(&mut self, view: &View<'_>, candidates: &[Candidate]) -> Choice {
         let worlds = self.sample_worlds(view, self.samples);
         let scored = score_worlds(view, &worlds, candidates);
-        candidates[recommended(&scored)].choice
+        candidates[recommended(&scored, candidates)].choice
     }
 
     /// Assess every candidate action for the current decision, each with
@@ -300,7 +325,7 @@ impl<R: Rng> MonteCarloBot<R> {
             return Vec::new();
         }
         let scored = score_worlds(view, &worlds, &candidates);
-        let mean = |(equities, ev_sum): &(Vec<f64>, f64)| {
+        let mean = |(equities, ev_sum, _): &Scored| {
             let n = equities.len() as f64;
             (equities.iter().sum::<f64>() / n, ev_sum / n)
         };
@@ -322,7 +347,7 @@ impl<R: Rng> MonteCarloBot<R> {
                 .collect();
         }
 
-        let best = recommended(&scored);
+        let best = recommended(&scored, &candidates);
         let mut out: Vec<Assessment> = candidates
             .iter()
             .zip(&scored)
@@ -343,14 +368,22 @@ impl<R: Rng> MonteCarloBot<R> {
 }
 
 /// The candidate passes: all triples of the [`PASS_POOL`] highest-scoring
-/// cards, the greedy triple first
+/// cards, the greedy triple first, plus the one moon pass
 fn pass_candidates(view: &View<'_>) -> Vec<Candidate> {
     let hand = view.hand();
     let mut ranked: Vec<Card> = hand.into_iter().collect();
     ranked.sort_by_key(|&card| -pass_score(hand, card, 1));
+
+    // The mirror of the greedy triple: the three cards the pass policy least
+    // wants gone are low cards of long suits, which is exactly the ballast a
+    // shot sheds.  One candidate, rolled with a shooting continuation.
+    let losers: [Card; 3] = ranked[ranked.len() - 3..]
+        .try_into()
+        .expect("a passing hand holds thirteen cards");
+
     ranked.truncate(PASS_POOL);
 
-    let mut out = Vec::with_capacity(20);
+    let mut out = Vec::with_capacity(21);
     for i in 0..ranked.len() {
         for j in i + 1..ranked.len() {
             for k in j + 1..ranked.len() {
@@ -358,10 +391,16 @@ fn pass_candidates(view: &View<'_>) -> Vec<Candidate> {
                 out.push(Candidate {
                     label: format!("pass {} {} {}", triple[0], triple[1], triple[2]),
                     choice: Choice::Pass(triple),
+                    shoot: false,
                 });
             }
         }
     }
+    out.push(Candidate {
+        label: format!("shoot, pass {} {} {}", losers[0], losers[1], losers[2]),
+        choice: Choice::Pass(losers),
+        shoot: true,
+    });
     out
 }
 
@@ -414,12 +453,32 @@ fn play_candidates(view: &View<'_>) -> Vec<Candidate> {
     }
 
     reps.truncate(MAX_CANDIDATES);
-    reps.into_iter()
+    let mut out: Vec<Candidate> = reps
+        .into_iter()
         .map(|card| Candidate {
             label: format!("play {card}"),
             choice: Choice::Play(card),
+            shoot: false,
         })
-        .collect()
+        .collect();
+
+    // One moon candidate, past the cap: the truncation runs in suit order
+    // and would otherwise drop the very high cards a shot opens with.
+    // Offered only while nobody else has scored — a moon is dead the moment
+    // they do — and only when the plays differ at all, so a fully collapsed
+    // legal set keeps `assess`'s "every play tied" read.
+    let alive = Seat::ALL
+        .into_iter()
+        .all(|seat| seat == view.seat() || view.points_taken(seat) == 0);
+    if alive && out.len() > 1 {
+        let card = shoot_play(legal, trick, played);
+        out.push(Candidate {
+            label: format!("shoot, play {card}"),
+            choice: Choice::Play(card),
+            shoot: true,
+        });
+    }
+    out
 }
 
 /// Roll candidates through the same `worlds` (common random numbers) in
@@ -433,24 +492,22 @@ fn play_candidates(view: &View<'_>) -> Vec<Candidate> {
 /// against the incumbent is negative on that prefix, and [`beats`] zips to
 /// the shorter slice, so [`recommended`] rejects it with no special
 /// casing.
-fn score_worlds(
-    view: &View<'_>,
-    worlds: &[Round],
-    candidates: &[Candidate],
-) -> Vec<(Vec<f64>, f64)> {
+fn score_worlds(view: &View<'_>, worlds: &[Round], candidates: &[Candidate]) -> Vec<Scored> {
     let me = view.seat();
     let rules = view.rules();
     let standing = absolute_standing(me, view.game_scores());
     let eval = |candidate: &Candidate, world: &Round| {
-        let result = candidate.choice.roll(world.clone(), me);
+        let result = candidate.choice.roll(world.clone(), me, candidate.shoot);
+        let moon = u32::from(result.shooter() == Some(me));
         let scores = result.scores(rules);
         (
             equity(&scores, me, standing, rules),
             f64::from(scores[me as usize]),
+            moon,
         )
     };
 
-    let mut scored: Vec<(Vec<f64>, f64)> = vec![(Vec::new(), 0.0); candidates.len()];
+    let mut scored: Vec<Scored> = vec![(Vec::new(), 0.0, 0); candidates.len()];
     let mut alive: Vec<usize> = (1..candidates.len()).collect();
     let mut done = 0;
     while done < worlds.len() {
@@ -458,7 +515,7 @@ fn score_worlds(
         for &i in std::iter::once(&0).chain(&alive) {
             let candidate = &candidates[i];
             #[cfg(feature = "parallel")]
-            let results: Vec<(f64, f64)> = {
+            let results: Vec<(f64, f64, u32)> = {
                 use rayon::prelude::*;
                 batch
                     .par_iter()
@@ -470,10 +527,11 @@ fn score_worlds(
 
             // Reduced sequentially in world order in both builds, so a
             // parallel bot makes bit-identical decisions to a serial one.
-            let (equities, ev_sum) = &mut scored[i];
-            for (equity, points) in results {
+            let (equities, ev_sum, moons) = &mut scored[i];
+            for (equity, points, moon) in results {
                 equities.push(equity);
                 *ev_sum += points;
+                *moons += moon;
             }
         }
         done += batch.len();
@@ -490,11 +548,28 @@ fn score_worlds(
 /// The index of the recommended candidate: the greedy incumbent
 /// (`scored[0]`) unless a challenger's paired advantage clears the
 /// [`beats`] gate, in which case the largest such gain
-fn recommended(scored: &[(Vec<f64>, f64)]) -> usize {
+///
+/// A moon challenger must clear a second bar: the rollouts have to actually
+/// shoot it more often than not.
+///
+/// Its per-world equities are bimodal — the moon band's ceiling against a
+/// heap of failures — and a paired test on heavy-tailed differences waves
+/// through edges that are not there: measured against the greedy field, the
+/// gate alone attempted a moon in two rounds in five to land one in twenty,
+/// at a cost of over two points a round.  The break-even is arithmetic
+/// rather than taste.  A moon is worth `0.5 + 26/112 ≈ 0.732` mid-game, a
+/// failed shot leaves us holding about half the deck's points for roughly
+/// `0.423`, and the greedy line is worth about `0.577`; the indifference
+/// point between them sits within a hair of an even chance.  A moon rate
+/// over the sampled worlds is a plain Bernoulli count with none of the tail
+/// trouble, so require it to be a majority.
+fn recommended(scored: &[Scored], candidates: &[Candidate]) -> usize {
     let mean = |e: &[f64]| e.iter().sum::<f64>() / e.len() as f64;
+    let likely = |i: usize| 2 * scored[i].2 as usize > scored[i].0.len();
     let defend = &scored[0].0;
     (1..scored.len())
         .filter(|&i| beats(&scored[i].0, defend))
+        .filter(|&i| !candidates[i].shoot || likely(i))
         .max_by(|&a, &b| mean(&scored[a].0).total_cmp(&mean(&scored[b].0)))
         .unwrap_or(0)
 }
@@ -600,13 +675,35 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
             // keeping seeded play reproducible.
             return legal.into_iter().next().expect("checked non-empty");
         }
+        let trick = view.current_trick().expect("a play decision has a trick");
+
+        // A moon is a plan, not a card, and the rollouts that chose it
+        // priced thirteen tricks of shooting.  Re-deciding it every trick
+        // instead measured out at three overrides in ten — the search kept
+        // wandering back to the greedy line holding points it had already
+        // paid for, which is the worst of both.  So carry the plan: the
+        // first trick of a round clears it, another seat scoring kills it,
+        // and in between the shot is simply played.
+        if view.tricks().is_empty()
+            || Seat::ALL
+                .into_iter()
+                .any(|seat| seat != view.seat() && view.points_taken(seat) > 0)
+        {
+            self.shooting = false;
+        }
+        if self.shooting {
+            return shoot_play(legal, trick, view.played());
+        }
+
         let candidates = MonteCarloBot::<R>::candidates(view);
         if candidates.len() < 2 {
             // Every legal card collapsed into one equivalence class.
-            let trick = view.current_trick().expect("a play decision has a trick");
             return greedy_play(legal, trick, view.played());
         }
-        match self.choose(view, &candidates) {
+        let worlds = self.sample_worlds(view, self.samples);
+        let best = recommended(&score_worlds(view, &worlds, &candidates), &candidates);
+        self.shooting = candidates[best].shoot;
+        match candidates[best].choice {
             Choice::Play(card) => card,
             Choice::Pass(_) => unreachable!("the playing phase yields play choices"),
         }
@@ -620,7 +717,7 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Table;
+    use crate::{HeuristicBot, Table};
     use hearts::Holding;
     use rand::SeedableRng as _;
     use rand::rngs::StdRng;
@@ -827,7 +924,11 @@ mod tests {
         let view = table.view(Seat::South);
 
         let cands = play_candidates(&view);
-        assert_eq!(cands.len(), 2, "Q♠ must not collapse into J♠");
+        assert_eq!(
+            cands.iter().filter(|c| !c.shoot).count(),
+            2,
+            "Q♠ must not collapse into J♠"
+        );
         assert!(
             cands
                 .iter()
@@ -955,7 +1056,11 @@ mod tests {
 
         let picked = rows.iter().find(|r| r.recommended).expect("a flagged pick");
         let played = chooser.play_card(&view);
-        assert_eq!(picked.action, format!("play {played}"));
+        assert!(
+            picked.action.ends_with(&format!("play {played}")),
+            "{} is the card {played} was picked for",
+            picked.action,
+        );
     }
 
     #[test]
@@ -964,7 +1069,9 @@ mod tests {
         let table = Table::deal(Rules::new(), PassDirection::Left, &mut rng);
         let me = table.turn().expect("passing starts at North");
         let view = table.view(me);
-        assert_eq!(pass_candidates(&view).len(), 20);
+        let cands = pass_candidates(&view);
+        assert_eq!(cands.iter().filter(|c| !c.shoot).count(), 20);
+        assert_eq!(cands.iter().filter(|c| c.shoot).count(), 1, "the moon pass");
 
         let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(6)).samples(16);
         let picks = bot.pass_cards(&view);
@@ -976,6 +1083,39 @@ mod tests {
         for card in picks {
             assert!(view.hand().contains(card));
         }
+    }
+
+    #[test]
+    fn a_hand_that_cannot_win_a_trick_does_not_try() {
+        // The guard against the opposite failure.  A moon candidate is on
+        // offer at every pass, so it has to lose on a hand with no length,
+        // no ace and nothing above a five: the shot dies on trick two and
+        // the rollout charges us for having kept the queen.
+        fn hand(text: &str) -> Hand {
+            text.parse().expect("a valid hand")
+        }
+        let hands = [
+            hand("234.234.234.2345"), // North: the worst hand in the deck
+            hand("5678.567.567.678"),
+            hand("9TJ.89TJ.89T.9TJ"),
+            hand("QKA.QKA.JQKA.QKA"),
+        ];
+        let round = Round::from_deal(Rules::new(), PassDirection::Left, hands)
+            .expect("a full partition deals");
+        let table = Table::new(round);
+        let view = table.view(Seat::North);
+
+        let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(0xC0DE)).samples(128);
+        let picked = bot
+            .assess(&view)
+            .into_iter()
+            .find(|row| row.recommended)
+            .expect("a flagged pick");
+        assert!(
+            !picked.action.starts_with("shoot"),
+            "shot the moon holding nothing: {}",
+            picked.action,
+        );
     }
 
     #[test]
@@ -1069,5 +1209,63 @@ mod tests {
         );
         let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(1)).samples(64);
         assert_eq!(bot.play_card(&view), card("K♠"));
+
+        // East already holds points, so the moon is dead for North and the
+        // shoot candidate is not even generated.
+        assert!(
+            !play_candidates(&view).iter().any(|c| c.shoot),
+            "a dead moon is not a candidate",
+        );
+    }
+
+    #[test]
+    fn a_laydown_moon_is_rolled_as_one() {
+        fn card(text: &str) -> Card {
+            text.parse().expect("a valid card")
+        }
+        fn hand(text: &str) -> Hand {
+            text.parse().expect("a valid hand")
+        }
+
+        // North holds the top of every suit but diamonds, and never loses
+        // the lead long enough for anyone to lead one.  East, void in
+        // spades, discards on every spade lead — a heart under the greedy
+        // policy, a diamond once the table knows it is defending a moon.
+        let hands = [
+            hand("QKA..QKA.29TJQKA"), // North: the monster, and the 2♠ ballast
+            hand("2345.234567.234."), // East: holds the deuce, void in spades
+            hand("6789.89T.567.456"),
+            hand("TJ.JQKA.89TJ.378"),
+        ];
+        let mut round = Round::from_deal(Rules::new(), PassDirection::Hold, hands)
+            .expect("a full partition deals");
+        for (seat, text) in [(Seat::East, "2♣"), (Seat::South, "6♣"), (Seat::West, "T♣")] {
+            round
+                .play(seat, card(text))
+                .expect("a legal scripted play, North last to the deuce");
+        }
+
+        let ace = Choice::Play(card("A♣"));
+        assert_eq!(
+            ace.roll(round.clone(), Seat::North, true).shooter(),
+            Some(Seat::North),
+            "the shooting continuation takes all thirteen tricks",
+        );
+        assert_ne!(
+            ace.roll(round.clone(), Seat::North, false).shooter(),
+            Some(Seat::North),
+            "the greedy continuation ducks the moon away",
+        );
+
+        // End to end, against three bots that defend: the search has to find
+        // the shot *and* carry it across all thirteen tricks.
+        let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(3)).samples(64);
+        let mut east = HeuristicBot::new();
+        let mut south = HeuristicBot::new();
+        let mut west = HeuristicBot::new();
+        let result = Table::new(round)
+            .play([&mut bot, &mut east, &mut south, &mut west])
+            .expect("no seat cheats");
+        assert_eq!(result.shooter(), Some(Seat::North), "the bot shot it");
     }
 }

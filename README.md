@@ -35,6 +35,9 @@ The design triangle:
   respected, its own passed cards pinned to the receiver — replays the
   public history into a real [`Round`] per world, rolls each out with the
   greedy policy, and picks the action with the best expected game equity.
+  One candidate per decision is a moon attempt — the deciding seat shoots
+  and the other three defend — taken only when the rollouts reach the moon
+  in most worlds, and then carried to the end of the round.
 
 ## Quick start
 

@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `MonteCarloBot` can now shoot the moon.  Every decision carries one extra
+  candidate rolled with the deciding seat shooting — cash the highest card
+  when leading, top the led suit when that wins, shed the cheapest
+  non-penalty card when void — and the other three defending instead of
+  ducking, plus one moon pass built from the three cards the pass policy
+  least wants gone.  It is taken only when the rollouts actually reach the
+  moon in a majority of worlds, and then carried to the end of the round.
+  Against three `HeuristicBot`s over two paired blocks of 2000 rounds,
+  `mc:128` shoots 85 of 4000 deals where it used to shoot 36, and widens its
+  margin over the field from 3.18 to 3.62 points a round on the first block
+  and from 3.49 to 3.59 on the second, and takes 211 of 300 paired games
+  instead of 202.  Every measurement moves the same way and none regresses,
+  but each gain on its own is inside the noise; the moon rate is the
+  unambiguous change, and the point of it is the seat that is not a
+  `HeuristicBot` — the greedy field never shoots and only defends past 8
+  points, so it cannot punish a bad attempt the way Deep CFR does.
+
+  Both extra conditions were paid for in measurement.  The significance gate
+  alone attempted a moon in two rounds in five to land one in twenty, at a
+  cost of over two points a round: a moon candidate's per-world equities are
+  bimodal, and a paired test on heavy tails waves through edges that are not
+  there.  A moon rate is a plain Bernoulli count, and its break-even is
+  arithmetic — a moon is worth `0.5 + 26/112` mid-game against about `0.423`
+  for a failed shot and `0.577` for the greedy line, which puts indifference
+  within a hair of an even chance.  Re-deciding the shot each trick was
+  worse still, overriding it in three committed decisions in ten: the
+  rollouts price thirteen tricks of shooting, so a bot that wanders back to
+  the greedy line has taken the points and bought nothing.
 - The web UI plays a short synthesized sting when hearts break and an
   ominous one when Q♠ hits the table (WebAudio, no sound assets).
 - Offer to end a round early once all 26 points are captured.  The web UI

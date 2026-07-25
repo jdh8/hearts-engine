@@ -231,11 +231,21 @@ fn moon_threat(view: &View<'_>, threshold: u8) -> Option<Seat> {
 pub(crate) fn moon_defense(view: &View<'_>, threshold: u8) -> Option<Card> {
     let threat = moon_threat(view, threshold)?;
     let trick = view.current_trick()?;
-    let led = trick.suit()?;
     if trick.winner() != Some(threat) {
         return None;
     }
-    let legal = view.legal_plays();
+    beat_threat(view.legal_plays(), trick)
+}
+
+/// Take this trick away from the seat currently winning it
+///
+/// The knowledge-free core of [`moon_defense`], shared with the rollout
+/// policy: beat the winner as cheaply as possible but never with our own
+/// Q♠, and when we cannot beat them, gift them no penalty card toward the
+/// sweep.  `None` when the trick has no led suit or every legal play would
+/// feed the sweep, so the caller falls back to its normal policy.
+fn beat_threat(legal: Hand, trick: Trick) -> Option<Card> {
+    let led = trick.suit()?;
     let winner = winning_card(trick).expect("a led trick has a winning card");
     let follow = legal[led];
     if follow.is_empty() {
@@ -284,14 +294,81 @@ impl Strategy for HeuristicBot {
     }
 }
 
+/// The knowledge-free moon-seeking policy, the mirror of [`greedy_play`]
+///
+/// A shot has to win every trick left, so: cash our highest card when
+/// leading, top the led suit when that beats the current winner, and shed
+/// our cheapest junk when void — the hearts and the queen are cards we mean
+/// to *win*, not discard.  On a trick we can no longer take, the shot needs
+/// nothing from us and [`greedy_play`] keeps the stopper it would have
+/// wasted.
+pub(crate) fn shoot_play(legal: Hand, trick: Trick, played: Hand) -> Card {
+    let highest = |cards: Hand| {
+        cards
+            .into_iter()
+            .max_by_key(|card| card.rank)
+            .expect("the set was checked non-empty")
+    };
+
+    let Some(led) = trick.suit() else {
+        return highest(legal);
+    };
+
+    let follow = legal[led];
+    if follow.is_empty() {
+        // Void, so this trick is lost: shed the cheapest card that is not a
+        // penalty we still want to take ourselves.
+        let junk = legal - Hand::PENALTIES;
+        let shed = if junk.is_empty() { legal } else { junk };
+        return shed
+            .into_iter()
+            .min_by_key(|card| card.rank)
+            .expect("legal plays are never empty on turn");
+    }
+
+    let winner = winning_card(trick).expect("a led trick has a winning card");
+    match (follow - below(winner.rank) - Holding::from_rank(winner.rank))
+        .iter()
+        .next_back()
+    {
+        Some(rank) => Card { suit: led, rank },
+        None => greedy_play(legal, trick, played),
+    }
+}
+
 /// The rollout flavor of the policy, for omniscient Monte Carlo worlds
+///
+/// `shooter`, when set, is the seat whose moon the world is testing: it
+/// plays [`shoot_play`] for as long as the shot is alive, and the other
+/// three stop ducking whenever it is winning the trick.  Modelling the
+/// table as greedy duckers instead would make every moon look like a
+/// laydown.
 #[cfg(feature = "rand")]
-pub(crate) fn rollout_play(round: &hearts::Round, seat: Seat) -> Card {
-    greedy_play(
-        round.legal_plays(seat),
-        round.current_trick().expect("a playing round has a trick"),
-        round.played(),
-    )
+pub(crate) fn rollout_play(round: &hearts::Round, seat: Seat, shooter: Option<Seat>) -> Card {
+    let legal = round.legal_plays(seat);
+    let trick = round.current_trick().expect("a playing round has a trick");
+    let played = round.played();
+
+    if let Some(shooter) = shooter {
+        // A shot dies the moment anyone else scores; from there the shooter
+        // bails out to the greedy policy, as a real one would.
+        let alive = Seat::ALL
+            .into_iter()
+            .all(|other| other == shooter || round.points_taken(other) == 0);
+        if !alive {
+            return greedy_play(legal, trick, played);
+        }
+        if seat == shooter {
+            return shoot_play(legal, trick, played);
+        }
+        if trick.winner() == Some(shooter)
+            && let Some(card) = beat_threat(legal, trick)
+        {
+            return card;
+        }
+    }
+
+    greedy_play(legal, trick, played)
 }
 
 #[cfg(test)]
@@ -318,6 +395,42 @@ mod tests {
         let guarded = hand("234567.8.9A.2345Q");
         let picks = greedy_pass(guarded, 1);
         assert!(!picks.contains(&card("Q♠")));
+    }
+
+    #[test]
+    fn shooting_takes_every_trick_it_can() {
+        // Leading: cash the highest card in hand.
+        let lead = Trick::new(Seat::North);
+        assert_eq!(shoot_play(hand("2.3.A.4"), lead, Hand::EMPTY), card("A♥"));
+
+        // Following a trick we can win: top the led suit, not duck under it.
+        let mut trick = Trick::new(Seat::North);
+        trick.play(card("9♦")).unwrap();
+        let held = hand(".2378Q..");
+        assert_eq!(shoot_play(held, trick, Hand::EMPTY), card("Q♦"));
+        assert_eq!(
+            greedy_play(held, trick, Hand::EMPTY),
+            card("8♦"),
+            "the greedy policy ducks the same holding"
+        );
+    }
+
+    #[test]
+    fn a_dead_trick_costs_the_shooter_nothing() {
+        // The nine is out of reach in diamonds, so the shot needs nothing
+        // here: fall back to the greedy policy rather than burn a stopper.
+        let mut trick = Trick::new(Seat::North);
+        trick.play(card("9♦")).unwrap();
+        let held = hand(".2378..A");
+        assert_eq!(
+            shoot_play(held, trick, Hand::EMPTY),
+            greedy_play(held, trick, Hand::EMPTY)
+        );
+
+        // Void: shed the cheapest junk and keep the penalties to win later.
+        assert_eq!(shoot_play(hand("29..3A.Q"), trick, Hand::EMPTY), card("2♣"));
+        // Nothing but penalties: the lowest of them goes.
+        assert_eq!(shoot_play(hand("..3A.Q"), trick, Hand::EMPTY), card("3♥"));
     }
 
     #[test]
