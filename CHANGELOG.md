@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the greedy line has taken the points and bought nothing.
 - The web UI plays a short synthesized sting when hearts break and an
   ominous one when Q♠ hits the table (WebAudio, no sound assets).
+- The stings now have a visual counterpart for players who can't hear
+  them: a large 💔 pops over the table when hearts break, a ♠ when the
+  Q♠ lands.  Under `prefers-reduced-motion` the glyph fades in place
+  instead of scaling — it stays visible because it is the accessible
+  channel.
 - Offer to end a round early once all 26 points are captured.  The web UI
   shows an "End round" button and the terminal `play` example asks before the
   next human play, both jumping straight to the round result.  The leftover

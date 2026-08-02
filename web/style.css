@@ -227,6 +227,24 @@ button.card:disabled { opacity: 1; }
 }
 .ghost.sweeping { transition-timing-function: cubic-bezier(.4, 0, .8, .5); }
 
+.sting {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 200;
+  font-size: min(40vmin, 14rem);
+  animation: sting-pop 0.8s ease-out forwards;
+}
+.sting.heart { color: var(--red); }
+.sting.spade { color: var(--black); text-shadow: 0 0 1.5rem #fff, 0 0 0.4rem #fff; }
+@keyframes sting-pop {
+  from { transform: scale(0.4); opacity: 0.95; }
+  60% { transform: scale(1.1); opacity: 0.9; }
+  to { transform: scale(1.25); opacity: 0; }
+}
+
 .actions {
   min-height: 2.35rem;
   display: flex;
@@ -346,4 +364,11 @@ body.log-hidden .log { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .ghost, .hand .card.clickable, .broken { transition-duration: 0.01ms; }
+  /* Keep the sting visible — it is the accessible channel — just motionless. */
+  .sting { animation-name: sting-fade; animation-duration: 0.9s; }
+}
+@keyframes sting-fade {
+  from { opacity: 0.95; }
+  70% { opacity: 0.9; }
+  to { opacity: 0; }
 }

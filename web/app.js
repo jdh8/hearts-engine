@@ -83,6 +83,17 @@ const queenSound = () =>
     { freq: 185.0, type: 'sawtooth', at: 0, dur: 0.4, peak: 0.35 },
   ]);
 
+// Visual counterpart to the stings, so the events land without audio.
+function flashSting(glyph, cls) {
+  const el = document.createElement('div');
+  el.className = `sting ${cls}`;
+  el.textContent = glyph;
+  el.setAttribute('aria-hidden', 'true'); // already announced via the log
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+  setTimeout(() => el.remove(), 1500); // fallback
+}
+
 async function main() {
   await init();
 
@@ -186,8 +197,13 @@ async function finishRound() {
 async function step(next) {
   const move = next.last_move;
   if (move?.kind === 'play' && move.card) {
-    if (move.card === 'Q♠') queenSound();
-    else if (!state?.hearts_broken && next.hearts_broken) heartsBrokenSound();
+    if (move.card === 'Q♠') {
+      queenSound();
+      flashSting('♠', 'spade');
+    } else if (!state?.hearts_broken && next.hearts_broken) {
+      heartsBrokenSound();
+      flashSting('💔', 'heart');
+    }
     const from = actorAnchor(move.actor, move.card);
     await flyCard(from, id(`trick-slot-${move.actor}`), cardFromCode(move.card));
   } else if (move?.kind === 'pass') {
