@@ -29,65 +29,26 @@ const id = (x) => document.getElementById(x);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // One-shot stings; audio is best-effort and never blocks the game loop.
-let audioCtx;
 let muted = localStorage.getItem('muted') === 'true';
 const glassBreak = new Audio(new URL('./audio/glass-break.mp3', import.meta.url));
+const queenKnell = new Audio(new URL('./audio/queen-knell.mp3', import.meta.url));
 glassBreak.preload = 'auto';
 glassBreak.volume = 0.6;
+queenKnell.preload = 'auto';
+queenKnell.volume = 0.35;
 
-function chime(notes) {
+function playSound(sound) {
   if (muted) return;
   try {
-    audioCtx ??= new AudioContext();
-    audioCtx.resume();
-    const t0 = audioCtx.currentTime;
-    for (const { freq, type, at, dur, peak = 0.15 } of notes) {
-      const gain = new GainNode(audioCtx, { gain: 0 });
-      gain.gain.setValueAtTime(0, t0 + at);
-      gain.gain.linearRampToValueAtTime(peak, t0 + at + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, t0 + at + dur);
-      gain.connect(audioCtx.destination);
-      let src;
-      if (type === 'noise') {
-        // White noise highpassed at `freq`, for percussive cracks.
-        const length = Math.ceil(audioCtx.sampleRate * dur);
-        const buffer = new AudioBuffer({ length, sampleRate: audioCtx.sampleRate });
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
-        src = new AudioBufferSourceNode(audioCtx, { buffer });
-        src
-          .connect(new BiquadFilterNode(audioCtx, { type: 'highpass', frequency: freq }))
-          .connect(gain);
-      } else {
-        src = new OscillatorNode(audioCtx, { type, frequency: freq });
-        src.connect(gain);
-      }
-      src.start(t0 + at);
-      src.stop(t0 + at + dur);
-    }
+    sound.currentTime = 0;
+    sound.play().catch(() => {});
   } catch {
     // audio is best-effort
   }
 }
 
-function heartsBrokenSound() {
-  if (muted) return;
-  try {
-    glassBreak.currentTime = 0;
-    glassBreak.play().catch(() => {});
-  } catch {
-    // audio is best-effort
-  }
-}
-
-// Ominous low tritone dyad around C3.  Sawtooth + boosted peak: near 130 Hz
-// the ear needs ~20 dB more SPL for equal loudness, and small speakers barely
-// reproduce the fundamental, so let the harmonics carry it.
-const queenSound = () =>
-  chime([
-    { freq: 130.81, type: 'sawtooth', at: 0, dur: 0.4, peak: 0.35 },
-    { freq: 185.0, type: 'sawtooth', at: 0, dur: 0.4, peak: 0.35 },
-  ]);
+const heartsBrokenSound = () => playSound(glassBreak);
+const queenSound = () => playSound(queenKnell);
 
 // Visual counterpart to the stings, so the events land without audio.
 function flashSting(glyph, cls) {

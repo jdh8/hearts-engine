@@ -111,3 +111,8 @@ Writing your own bot is implementing [`Strategy`]'s two decisions against a
 “[Breaking Glass.wav](https://freesound.org/s/189575/)” by
 [Unopiate](https://freesound.org/people/Unopiate/) is dedicated to the public
 domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+
+“[bec low bell solo.wav](https://freesound.org/s/554655/)” by
+[HMTSCCSound](https://freesound.org/people/HMTSCCSound/) was trimmed and faded
+for the Queen of Spades cue. The source is dedicated to the public domain under
+[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
