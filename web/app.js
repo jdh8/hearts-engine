@@ -23,6 +23,7 @@ const NAMES = ['You', 'West', 'North', 'East'];
 let game;
 let state; // snapshot currently on screen (the "before" state during a step)
 let busy = false;
+let epoch = 0; // bumped when a click outruns an in-flight animation
 let selectedPass = new Set();
 
 const id = (x) => document.getElementById(x);
@@ -75,6 +76,7 @@ async function main() {
   id('logtoggle').onclick = toggleLog;
   id('hint-button').onclick = showHint;
   id('mute').onclick = toggleMute;
+  id('end-round').onclick = finishRound;
   updateLogButton();
   updateMuteButton();
 
@@ -167,18 +169,20 @@ async function continueGame() {
 
 // End a round whose points are already settled: jump straight to the
 // showdown, skipping the scoreless run-out (no per-card animation).
-async function finishRound() {
-  if (busy || !state?.points_settled) return;
-  setBusy(true);
-  state = JSON.parse(game.finish_round());
-  render(state);
-  setBusy(false);
+// Deliberately not gated on `busy` — the offer stands while the bots play,
+// so this is exactly the state it has to work in.  `run()` unwinds on its
+// own once `state.round_over` holds, and its in-flight `tick()` is a no-op.
+function finishRound() {
+  if (!state?.points_settled) return;
+  epoch++;
+  render((state = JSON.parse(game.finish_round())));
 }
 
 // Animate the move that produced `next` over the current view, then render it.
 // A fourth play is briefly rendered as a complete trick before all four cards
 // sweep toward its winner.
 async function step(next) {
+  const mine = epoch;
   const move = next.last_move;
   if (move?.kind === 'play' && move.card) {
     if (move.card === 'Q♠') {
@@ -195,6 +199,8 @@ async function step(next) {
   } else if (move?.kind === 'exchange') {
     await flyExchange();
   }
+
+  if (epoch !== mine) return; // an End round click landed mid-flight
 
   const trickCompleted =
     move?.kind === 'play' &&
@@ -308,6 +314,9 @@ function render(snapshot, trickOverride = null, winnerOverride = null) {
   renderActions(snapshot);
   renderLog(snapshot);
   renderShowdown(snapshot);
+  // Outside `#actions`, which is wiped every frame: the offer has to survive
+  // the bots' turns, so it lives in a node no render can destroy.
+  id('end-round').hidden = !snapshot.points_settled;
 }
 
 function renderHeader(snapshot) {
@@ -431,9 +440,6 @@ function renderActions(snapshot) {
     return;
   }
   box.append(text('Choose a highlighted card to play.', 'prompt'));
-  if (snapshot.points_settled) {
-    box.append(button('End round', finishRound, 'end-round'));
-  }
 }
 
 function confirmPass() {

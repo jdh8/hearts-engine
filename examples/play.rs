@@ -307,22 +307,20 @@ fn main() -> Result<()> {
         println!();
         println!("=== Round {number} (pass {}) ===", game.next_direction());
         let mut table = Table::new(game.deal(&mut rng)).scores(game.scores());
-        let mut ended = false;
 
         while let Some(seat) = table.turn() {
             // Once every point is in, the tally is frozen: offer to skip the
-            // scoreless run-out and jump to the result.  Ask at most once.
-            if seat == HUMAN && !ended && table.points_settled() {
-                ended = true;
-                if prompt_end_round() {
-                    while let Some(seat) = table.turn() {
-                        let bot = bots[if seat == HUMAN { Seat::North } else { seat } as usize]
-                            .as_deref_mut()
-                            .expect("every drained seat has a bot");
-                        table.step(bot)?;
-                    }
-                    break;
+            // scoreless run-out and jump to the result.  Declining only skips
+            // this turn — a blocking terminal has no out-of-turn input point,
+            // so re-asking each human turn is as persistent as the offer gets.
+            if seat == HUMAN && table.points_settled() && prompt_end_round() {
+                while let Some(seat) = table.turn() {
+                    let bot = bots[if seat == HUMAN { Seat::North } else { seat } as usize]
+                        .as_deref_mut()
+                        .expect("every drained seat has a bot");
+                    table.step(bot)?;
                 }
+                break;
             }
             let phase = table.round().phase();
             let played = table.round().played();

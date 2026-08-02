@@ -55,6 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The offer to end a settled round now stands until it is taken.  The web
+  UI's "End round" button lives outside the per-frame action box and shows
+  whenever the points are settled — including while the bots are playing, so
+  it can be clicked out of turn — and the terminal `play` example re-asks on
+  each human turn instead of once per round.
 - `MonteCarloBot` now defends against the moon at its live decision,
   reusing the same reactive overlay as `HeuristicBot` (break a lone
   opponent's sweep once they pass 8 points).  Its rollout policy models
