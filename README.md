@@ -105,3 +105,9 @@ Writing your own bot is implementing [`Strategy`]'s two decisions against a
 [`HeuristicBot`]: https://docs.rs/hearts-engine/latest/hearts_engine/struct.HeuristicBot.html
 [`MonteCarloBot`]: https://docs.rs/hearts-engine/latest/hearts_engine/struct.MonteCarloBot.html
 [`Round`]: https://docs.rs/hearts/latest/hearts/round/struct.Round.html
+
+## Sound credits
+
+“[Breaking Glass.wav](https://freesound.org/s/189575/)” by
+[Unopiate](https://freesound.org/people/Unopiate/) is dedicated to the public
+domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).

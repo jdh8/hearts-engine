@@ -36,7 +36,7 @@ jobs:
       run: |
         cd web
         mkdir _site
-        cp -r index.html app.js style.css pkg _site/
+        cp -r index.html app.js style.css audio pkg _site/
     - uses: actions/upload-pages-artifact@v5
       with:
         path: web/_site

@@ -28,9 +28,13 @@ let selectedPass = new Set();
 const id = (x) => document.getElementById(x);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// One-shot synthesized stings; no assets, no game-loop impact on failure.
+// One-shot stings; audio is best-effort and never blocks the game loop.
 let audioCtx;
 let muted = localStorage.getItem('muted') === 'true';
+const glassBreak = new Audio(new URL('./audio/glass-break.mp3', import.meta.url));
+glassBreak.preload = 'auto';
+glassBreak.volume = 0.6;
+
 function chime(notes) {
   if (muted) return;
   try {
@@ -66,16 +70,16 @@ function chime(notes) {
   }
 }
 
-// Breaking glass: a noise crack plus inharmonic partials ringing out in the
-// 2–7 kHz band, staggered like shards scattering.
-const heartsBrokenSound = () =>
-  chime([
-    { freq: 3000, type: 'noise', at: 0, dur: 0.08, peak: 0.3 },
-    { freq: 2093, type: 'sine', at: 0.01, dur: 0.3, peak: 0.12 },
-    { freq: 2960, type: 'sine', at: 0.02, dur: 0.25, peak: 0.1 },
-    { freq: 4730, type: 'sine', at: 0.015, dur: 0.2, peak: 0.08 },
-    { freq: 6260, type: 'sine', at: 0.035, dur: 0.15, peak: 0.06 },
-  ]);
+function heartsBrokenSound() {
+  if (muted) return;
+  try {
+    glassBreak.currentTime = 0;
+    glassBreak.play().catch(() => {});
+  } catch {
+    // audio is best-effort
+  }
+}
+
 // Ominous low tritone dyad around C3.  Sawtooth + boosted peak: near 130 Hz
 // the ear needs ~20 dB more SPL for equal loudness, and small speakers barely
 // reproduce the fundamental, so let the harmonics carry it.

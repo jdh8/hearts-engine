@@ -1,7 +1,7 @@
 # hearts-web
 
 Play Hearts against three [hearts-engine](..) bots in the browser. The whole
-game runs client-side as WebAssembly; there is no server and no external asset.
+game runs client-side as WebAssembly; there is no server.
 
 ## Build
 
@@ -32,7 +32,7 @@ to win the game; round EV is expected penalty points, so lower is better.
 
 ## Deploy
 
-`pkg/`, `index.html`, `app.js`, and `style.css` are static. The repository's
+`pkg/`, `audio/`, `index.html`, `app.js`, and `style.css` are static. The repository's
 [Pages workflow](../.github/workflows/pages.yml) builds and publishes them on
 pushes to `main`; any static host works too.
 
