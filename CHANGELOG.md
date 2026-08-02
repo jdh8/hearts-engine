@@ -44,6 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Q♠ lands.  Under `prefers-reduced-motion` the glyph fades in place
   instead of scaling — it stays visible because it is the accessible
   channel.
+- A speaker button in the web UI header mutes the stings (keyboard `m`),
+  remembered across sessions in `localStorage`.  The visual counterparts
+  keep firing while muted.
 - Offer to end a round early once all 26 points are captured.  The web UI
   shows an "End round" button and the terminal `play` example asks before the
   next human play, both jumping straight to the round result.  The leftover

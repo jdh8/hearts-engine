@@ -30,7 +30,9 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // One-shot synthesized stings; no assets, no game-loop impact on failure.
 let audioCtx;
+let muted = localStorage.getItem('muted') === 'true';
 function chime(notes) {
+  if (muted) return;
   try {
     audioCtx ??= new AudioContext();
     audioCtx.resume();
@@ -107,13 +109,16 @@ async function main() {
   document.body.classList.toggle('log-hidden', !savedLog);
   id('logtoggle').onclick = toggleLog;
   id('hint-button').onclick = showHint;
+  id('mute').onclick = toggleMute;
   updateLogButton();
+  updateMuteButton();
 
   document.addEventListener('keydown', (event) => {
     if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
     if (event.key.toLowerCase() === 'h') showHint();
     if (event.key.toLowerCase() === 'l') toggleLog();
+    if (event.key.toLowerCase() === 'm') toggleMute();
     if (event.key.toLowerCase() === 'n') {
       if (state?.round_over) continueGame();
       else newGame();
@@ -132,6 +137,20 @@ function toggleLog() {
 function updateLogButton() {
   id('logtoggle').textContent =
     document.body.classList.contains('log-hidden') ? 'Show log' : 'Hide log';
+}
+
+function toggleMute() {
+  muted = !muted;
+  localStorage.setItem('muted', String(muted));
+  updateMuteButton();
+}
+
+function updateMuteButton() {
+  const el = id('mute');
+  el.textContent = muted ? '🔇' : '🔊';
+  el.title = muted ? 'Unmute sounds (m)' : 'Mute sounds (m)';
+  el.setAttribute('aria-label', el.title);
+  el.setAttribute('aria-pressed', String(muted));
 }
 
 function setBusy(value) {
