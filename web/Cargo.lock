@@ -50,9 +50,9 @@ dependencies = [
 
 [[package]]
 name = "hearts"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4999a3130847c0723c7b8e037e6f9ec35429e9ce2b53d2ed0235282758fd157e"
+checksum = "6f5c9792d9ea713539cc3ccfa08c66bda7e2165a65b0343acd052beb777e59e7"
 dependencies = [
  "rand",
  "thiserror",

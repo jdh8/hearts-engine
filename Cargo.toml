@@ -30,7 +30,7 @@ rand = ["dep:rand", "hearts/rand"]
 parallel = ["dep:rayon", "rand"]
 
 [dependencies]
-hearts = "0.1.0"
+hearts = "0.1.1"
 rand = { version = "0.10", optional = true }
 rayon = { version = "1.10", optional = true }
 thiserror = "2"

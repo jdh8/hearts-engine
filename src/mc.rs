@@ -55,7 +55,7 @@ enum Choice {
 impl Choice {
     /// Apply the move to a world and play it out: greedily, or with `me`
     /// shooting the moon against a table that defends.
-    fn roll(self, mut round: Round, me: Seat, shoot: bool) -> RoundResult {
+    fn roll(self, round: &mut Round, me: Seat, shoot: bool) -> RoundResult {
         match self {
             Self::Pass(cards) => round
                 .pass(me, cards.into_iter().collect())
@@ -66,7 +66,7 @@ impl Choice {
         }
         let mut played = round.played();
         while let Some(seat) = round.turn() {
-            let card = rollout_play(&round, seat, shoot.then_some(me), played);
+            let card = rollout_play(round, seat, shoot.then_some(me), played);
             round
                 .play(seat, card)
                 .expect("the rollout policy picks from legal_plays");
@@ -575,7 +575,8 @@ fn play_candidates(view: &View<'_>) -> Vec<Candidate> {
 /// eliminated candidate keeps the equities it accumulated: its paired mean
 /// against the incumbent is negative on that prefix, and [`beats`] zips to
 /// the shorter slice, so [`recommended`] rejects it with no special
-/// casing.
+/// casing.  Each serial evaluator or parallel worker reuses a scratch
+/// [`Round`], whose `clone_from` retains the completed-trick allocation.
 fn score_worlds(
     view: &View<'_>,
     worlds: &[Round],
@@ -585,8 +586,9 @@ fn score_worlds(
     let me = view.seat();
     let rules = view.rules();
     let standing = absolute_standing(me, view.game_scores());
-    let eval = |candidate: &Candidate, world: &Round| {
-        let result = candidate.choice.roll(world.clone(), me, candidate.shoot);
+    let eval = |candidate: &Candidate, world: &Round, scratch: &mut Round| {
+        scratch.clone_from(world);
+        let result = candidate.choice.roll(scratch, me, candidate.shoot);
         let moon = u32::from(result.shooter() == Some(me));
         let scores = result.scores(rules);
         (
@@ -598,6 +600,8 @@ fn score_worlds(
 
     let mut scored: Vec<Scored> = vec![(Vec::new(), 0.0, 0); candidates.len()];
     let mut alive: Vec<usize> = (1..candidates.len()).collect();
+    #[cfg(not(feature = "parallel"))]
+    let mut scratch = worlds.first().cloned();
     let mut done = 0;
     while done < worlds.len() {
         let batch = &worlds[done..worlds.len().min(done + done.max(BATCH))];
@@ -608,11 +612,22 @@ fn score_worlds(
                 use rayon::prelude::*;
                 batch
                     .par_iter()
-                    .map(|world| eval(candidate, world))
+                    .map_init(
+                        || batch[0].clone(),
+                        |scratch, world| eval(candidate, world, scratch),
+                    )
                     .collect()
             };
             #[cfg(not(feature = "parallel"))]
-            let results = batch.iter().map(|world| eval(candidate, world));
+            let results = batch.iter().map(|world| {
+                eval(
+                    candidate,
+                    world,
+                    scratch
+                        .as_mut()
+                        .expect("a non-empty batch has a scratch round"),
+                )
+            });
 
             // Reduced sequentially in world order in both builds, so a
             // parallel bot makes bit-identical decisions to a serial one.
@@ -1371,8 +1386,9 @@ mod tests {
         }
 
         let ace = Choice::Play(card("A♣"));
+        let mut continuation = round.clone();
         assert_eq!(
-            ace.roll(round.clone(), Seat::North, true).shooter(),
+            ace.roll(&mut continuation, Seat::North, true).shooter(),
             Some(Seat::North),
             "the shooting continuation takes all thirteen tricks",
         );

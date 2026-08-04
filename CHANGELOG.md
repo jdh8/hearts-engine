@@ -79,6 +79,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   byte-identical.  Width buys strength (`mc:1024` beats `mc:128` by
   5.7 SE), so the same latency now affords about two and a half times
   the worlds; the web menu and hint now spend part of that gain.
+- Upgrade to `hearts` 0.1.1 and reuse a scratch `Round` for rollout
+  continuations, retaining its completed-trick allocation instead of cloning
+  a fresh vector for every candidate/world pair.  Together with the mechanics
+  crate's faster heart-break check, this makes another byte-identical cut:
+  `mc:128` play drops from 3.97 to 2.18 ms (45 %), `mc:64` pass from 9.64 to
+  5.87 ms (39 %), and `mc:1024` play from 21.39 to 11.49 ms (46 %).  The
+  200-block arena CSV remains exactly unchanged.
 - Restrict soft card-location inference to the known incoming pass.  Public
   safe ducks no longer reweight worlds according to the exact greedy rollout
   policy.  The pass-only form remains favorable but unresolved over 2,000

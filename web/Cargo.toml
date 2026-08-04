@@ -19,7 +19,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # Keep this compatible with the engine's direct dependency so Cargo resolves a
 # single `hearts` crate and its `Card` type stays identical across both crates.
-hearts = "0.1.0"
+hearts = "0.1.1"
 hearts-engine = { path = ".." }
 rand = "0.10"
 wasm-bindgen = "0.2.100"
