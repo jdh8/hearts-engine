@@ -50,6 +50,19 @@ what they removed:
   `proptest` (seeded termination + point conservation), `strength`
   (`#[ignore]`d mc-vs-greedy tripwire).
 - `examples/` — `play` (terminal, human = South), `arena`, `tune`.
+  `arena` is the measurement instrument: its unit is a **block** (one
+  deal, or one game seed, played four times with the lineup rotated so
+  every bot plays all four hands), deal seeds are a pure function of
+  `(--seed, block)`, and bots are built *inside* the trial seeded from
+  the deal — so two runs at one seed are paired card for card even
+  across rebuilds, and blocks parallelize with no effect on the output.
+  It reports five columns: `points` (`mean(others) − own`, the search
+  signal) and the three constant-sum rank payoffs `win` (`1-0-0-0`, the
+  shipped rule), `not-last` (`1-1-1-0`) and `rank` (`3-2-1-0`), plus
+  `moons`.  Their disagreement is the point — with four players
+  "seek the win" and "avoid the loss" are different objectives.
+  A homogeneous deterministic field (`greedy greedy greedy greedy`) must
+  print `0.000±0.000` exactly; that is the harness's own self-check.
 - `web/` — nested crate with its own workspace; see `web/README.md` and
   the wasm traps below.
 

@@ -75,10 +75,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remap the web difficulty menu to bots that are actually distinct in
   strength: Easy `newbie`, Medium `mc:16`, Hard `mc:64`, Expert `mc:128`
   (matching the hint solver).  The old Medium `greedy` was no stronger
-  than Easy, and Hard `mc:128`/Expert `mc:1024` were indistinguishable.
+  than Easy.  The four tiers now measure at 5.2 / 19.8 / 34.0 / 41.0 %
+  of games won in a shared lineup, so the ladder is real; Expert stops at
+  `mc:128` for latency, not for strength, since `mc:1024` does play
+  measurably better (see the diagnostics below).
 
 ### Internal
 
+- Rebuild `examples/arena` as a duplicate-deal harness.  The unit of
+  measurement is now a *block*: one deal — or one game seed — played four
+  times with the lineup rotated, so every bot plays all four hands of it.
+  That is duplicate bridge in the only form a four-player free-for-all
+  admits, there being no sides to swap.  Deal seeds are a pure function of
+  `(--seed, block)` and every bot is built inside its trial, seeded from
+  the deal rather than from the deal stream, so two runs at one seed are
+  paired card for card — even across rebuilds that differ by a private
+  `const` — and blocks parallelize with no effect on the output.
+
+  The old harness could not pair even in principle: it drew `mc` seeds
+  from the same RNG that then dealt the cards, and only for `mc` bots, so
+  two lineups at one `--seed` played different deals.  Its
+  `rotation = index % 4` shared a period *and* a phase with
+  `PassDirection::from_deal_index`, locking each bot to one pass direction
+  per seat.  And it credited every tied winner, so its four win rates
+  could sum past 100 % and its Wilson interval was mis-specified.  New
+  flags `--ab SPEC` (rerun the same blocks with SPEC in slot 1, report the
+  paired delta) and `--csv` (one row per block per bot, for pairing two
+  builds); `--rounds N` becomes `--blocks N`; `newbie` — the web UI's
+  shipped Easy tier — is playable at last.
+
+  It reports five columns rather than one.  `points` is the zero-sum
+  `mean(others) − own` that the Deep CFR harness already used, and is the
+  search signal.  The rest are the payoffs a four-player game leaves open
+  where a two-player one does not: with two players "seek the win" and
+  "avoid the loss" are the same sentence, with four they are different
+  objectives with different optimal play, and the rules pin down only one
+  of them.  So `win` (`1-0-0-0`, the shipped rule, `1/k` on a shared win
+  as `FinalScore::winners` has it), `not-last` (`1-1-1-0`) and `rank`
+  (`3-2-1-0` matchpoints, tied ranks averaged) are all reported side by
+  side.  They cost nothing once the cards are played, and their
+  disagreement is the point — a change that lifts `points` while dropping
+  `win` is reducing variance in a way the game does not reward.
+
+  Two invariants keep it honest.  Every column but `moons` is
+  constant-sum, asserted per block, so a wrong tie convention or a
+  rotation that lost a bot fails immediately instead of printing a
+  plausible number three hours later.  And a homogeneous *deterministic*
+  field is exactly degenerate: four identical bots play the same round in
+  all four rotations, so `arena greedy greedy greedy greedy` must print
+  `0.000±0.000` with no residual variance at all.  It does, which is the
+  end-to-end proof that the four rotations really are the same deal and
+  that the bot-to-seat attribution is right.
+- First measurements off that harness.  They are the point of the rebuild,
+  so they are recorded rather than summarised.  All are paired over
+  identical deals at 2000 blocks (8000 rounds) against three `HeuristicBot`s
+  unless noted.
+
+  *Search width is not saturated.*  `mc:1024` beats `mc:128` by
+  `+0.394 ± 0.069` points a deal — 5.7 SE, with `win`, `not-last` and
+  `rank` moving with it at 5.4, 6.3 and 7.4 SE.  The two were previously
+  called indistinguishable; that was a harness that could not resolve
+  them, not a fact about the bots.  Moons are the exception, moving
+  `−1.5 SE`, so the gap to Deep CFR's ~18 % is not a sample-count problem.
+
+  *The significance gate is set too high.*  Sweeping the `2.0` in `beats`,
+  strength is monotone in the threshold: `1.0` is worth `+0.216 ± 0.061`
+  points a deal and `1.5` `+0.182 ± 0.046`, while `2.5` costs
+  `−0.272 ± 0.047`.  The `2.0` is a multiplicity correction and it
+  over-corrects, by about half of what eight times the rollouts buy.
+  Lowering it does not reopen the moon-attempt problem, because the
+  Bernoulli-majority bar on shoot candidates is a separate filter: at a
+  gate of `1.0` the moon rate moves `+0.3 SE`.
+
+  *The candidate cap is a non-event.*  Raising `MAX_CANDIDATES` from 8 to
+  13 is worth `−0.003 ± 0.003` points a deal, with a paired difference SD
+  of 0.13 against the 3.09 of the `mc:1024` comparison — the two builds
+  agree on very nearly every decision.  Rank-adjacency collapse leaves
+  more than eight classes so rarely that the truncation almost never
+  fires, systematic though its suit order is.
+
+  *The noise floor.*  A homogeneous `mc:128` field lands within 1.3 SE of
+  level on every column, and the block-level payoff SD is 3.94 points a
+  deal: resolving 0.2 takes 1549 blocks, 0.1 takes 6195.  Seeding the bots
+  from the deal instead of the deal stream cuts the paired difference SD
+  from the 5.57 two independent runs would carry to 3.09 — 3.2× fewer
+  blocks for the same resolving power.
+
+  *Points buy wins at about 0.15 each*, measured at the `mc:64`→`mc:128`
+  rung, so a percentage point of games won costs 0.067 points a deal.  A
+  game-level confirmation therefore costs about 1.5× the rounds of the
+  points signal for an equivalent effect rather than the 4-5× a
+  per-observation count suggests, because a per-round edge compounds over
+  the ~10.6 rounds of a game.  Against three greedy bots `mc:128` wins
+  67.3 % of games.
+
+  *The rank payoffs never disagree about which bot is stronger*, at any
+  rung of the ladder — but they do not saturate together.  `mc:128` has
+  taken 76 % of its headroom above a fair share on `not-last` against
+  56 % on `win`, and the marginal conversion rotates as strength rises:
+  low on the ladder a point of improvement buys mostly *not coming last*,
+  high on it mostly *coming first*.  The bot is further along the "don't
+  lose" axis than the "win" axis, which is what a points-linear objective
+  predicts of it, and what headroom remains is on the `win` axis.
 - Cross-engine tournament harness against the Deep CFR player of
   [brianberns/Hearts](https://github.com/brianberns/Hearts), the strongest
   open-source Hearts bot we know of: an F# shim (`tournament/CfrShim`)
@@ -96,7 +194,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   seat-deal, shooting the moon in ~18 % of deals to our ~1 %.
 - Fix the web hint at 128 sampled worlds instead of adapting it upward to
   2048; the extra worlds cost latency with no measurable change in the
-  recommended play.
+  recommended play.  The strength diagnostics below now put that last
+  clause in doubt — `mc:1024` outplays `mc:128` by a wide margin — so the
+  hint's sample count is due a proper re-measurement; the latency argument
+  for capping it stands either way.
 
 ### Fixed
 

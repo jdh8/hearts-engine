@@ -95,8 +95,10 @@ Writing your own bot is implementing [`Strategy`]'s two decisions against a
 - `play`: play against three bots in the terminal —
   `cargo run --example play` (`--bot mc:128`, `--seed 7`, `hint` at the
   prompt, …)
-- `arena`: bot-vs-bot tournaments with win-rate statistics —
-  `cargo run --release --example arena -- --games 200 greedy greedy greedy mc:64`
+- `arena`: bot-vs-bot tournaments over duplicate deals, every bot playing
+  all four hands of each deal —
+  `cargo run --release --example arena -- --blocks 2000 mc:64 greedy greedy greedy`
+  (`--games N`, `--ab SPEC` for a paired A/B, `--csv`)
 
 [hearts]: https://crates.io/crates/hearts
 [`Strategy`]: https://docs.rs/hearts-engine/latest/hearts_engine/trait.Strategy.html
