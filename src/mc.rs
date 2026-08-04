@@ -98,7 +98,8 @@ impl Choice {
 /// fraction of the full sample count.
 ///
 /// One candidate per decision is a moon attempt, rolled with the deciding
-/// seat shooting and the other three defending instead of ducking.  It has
+/// seat shooting and the other three defending the way the live table
+/// does, once the shot shows eight points.  It has
 /// to clear the usual significance gate *and* actually reach the moon in
 /// most of the sampled worlds, and once chosen it is carried to the end of
 /// the round rather than re-argued each trick — a shot re-decided per trick

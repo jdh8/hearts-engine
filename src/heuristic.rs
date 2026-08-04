@@ -352,9 +352,11 @@ pub(crate) fn shoot_play(legal: Hand, trick: Trick, played: Hand) -> Card {
 ///
 /// `shooter`, when set, is the seat whose moon the world is testing: it
 /// plays [`shoot_play`] for as long as the shot is alive, and the other
-/// three stop ducking whenever it is winning the trick.  Modelling the
-/// table as greedy duckers instead would make every moon look like a
-/// laydown.
+/// three stop ducking once the shooter holds the live table's eight
+/// points and is winning the trick — the same trigger [`HeuristicBot`]'s
+/// moon-defense overlay fires on.  Defending from trick 1 prices every
+/// shot against a table no real opponent fields, while greedy duckers
+/// with no trigger at all would make every moon look like a laydown.
 ///
 /// `played` must equal `round.played()`; the caller threads it so a
 /// rollout does not refold the whole trick history at every play.
@@ -381,6 +383,7 @@ pub(crate) fn rollout_play(
             return shoot_play(legal, trick, played);
         }
         if trick.winner() == Some(shooter)
+            && round.points_taken(shooter) >= HeuristicConfig::default().moon_defense
             && let Some(card) = beat_threat(legal, trick)
         {
             return card;

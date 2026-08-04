@@ -58,6 +58,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Shoot-world rollout defenders now hold their fire until the shooter
+  shows eight points — the same trigger the live moon-defense overlay
+  fires on.  Defending from trick 1 priced every shot against a table no
+  real opponent fields, and the pessimism was double: it depressed both
+  the shot's equity and the in-world moon count the Bernoulli-majority
+  bar reads.  Over 6,000 paired duplicate blocks across two seeds,
+  `mc:128` gains `+0.0033 ± 0.0006` win equity (5.9 SE),
+  `+0.0032 ± 0.0014` matchpoint rank (2.2 SE), and `+0.075 ± 0.020`
+  points/deal (3.7 SE), while moon attempts rise from 2.0 % to 2.5 % of
+  rounds (8.6 SE).  The lone cost is `not-last` at `−0.0011 ± 0.0005`
+  (−2.3 SE): more shots means occasionally finishing last, and with four
+  players seeking the win and avoiding the loss are different objectives
+  — the win is the shipped rule.
 - Rollouts thread the running set of played cards through the policy
   instead of refolding the whole trick history at every play, making
   Monte Carlo decisions about 2.5× faster with bit-identical choices:
