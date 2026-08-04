@@ -58,6 +58,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Add soft card-location inference to Monte Carlo worlds.  A last-hand duck
+  on a clean trick now counts against a hidden safe winner, and the known
+  giver's pass softly favors hands where those cards rank as dangerous; both
+  remain likelihoods rather than hard constraints because opponents need not
+  share the rollout policy.  Across 10,195 paired duplicate deals over two
+  seeds, `mc:128` improves by `+0.0059 ± 0.0027` matchpoint rank (2.2 SE)
+  and `+0.0031 ± 0.0012` win equity (2.5 SE); the point-margin estimate is
+  positive but unresolved at `+0.027 ± 0.023` points/deal.
 - Let the Monte Carlo pass search consider passes that actually empty every
   1–3 card non-spade suit, supplementing the 20 triples drawn from its six
   highest independently scored cards.  Those scores could award three void
@@ -110,6 +118,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Close two strength-queue experiments after paired measurement.  Carrying
+  compatible determinized particles between decisions and replenishing the
+  rejected worlds is strength-neutral over 2,000 blocks (`rank +0.0016 ±
+  0.0054`, `win +0.0001 ± 0.0025`) and trims only 1.7 % from a matched
+  arena workload, so the cache complexity was reverted.  Replacing mid-game
+  point margin with projected soft matchpoints is worse over 600 game blocks:
+  the pure surrogate moves `win −0.0086 ± 0.0096`, `rank −0.0254 ±
+  0.0187`, and points/deal `−0.376 ± 0.056`; blending toward it with game
+  progress still moves `win −0.0069 ± 0.0087`, `rank −0.0169 ± 0.0163`,
+  and points/deal `−0.212 ± 0.050`.  Both equity shapes were reverted.
 - Rebuild `examples/arena` as a duplicate-deal harness.  The unit of
   measurement is now a *block*: one deal — or one game seed — played four
   times with the lineup rotated, so every bot plays all four hands of it.

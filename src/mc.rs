@@ -79,8 +79,10 @@ impl Choice {
 /// At every decision the bot samples hidden worlds consistent with its
 /// [`View`] — the receiver of its pass holds every passed card not yet
 /// played, seats shown void in a suit receive none of it, and the
-/// remaining unseen cards are distributed uniformly — plays each world out
-/// with the greedy policy on all seats, and picks the action with the best
+/// remaining unseen cards are distributed randomly.  Public choices then
+/// softly favor worlds that fit the same greedy model without becoming hard
+/// card-location claims.  The bot plays each world out with that policy on
+/// all seats and picks the action with the best
 /// expected value *for the game*: each rollout's result lands on the
 /// running [`game scores`](View::game_scores), a result that reaches
 /// [`game_target`](Rules::game_target) counts as the k-way win or loss of
@@ -177,11 +179,14 @@ impl<R: Rng> MonteCarloBot<R> {
     }
 
     /// Sample one set of current hidden hands consistent with the view, by
-    /// randomized most-constrained-first backtracking over the unseen cards
+    /// randomized most-constrained-first backtracking over the unseen cards,
+    /// softly weighted by informative public choices
     ///
-    /// Constraints: exact hand sizes, no card in a suit the seat is void
-    /// in, and the still-unplayed passed cards pinned to the receiver.
-    /// The true deal satisfies them, so failure is a sampling accident —
+    /// Hard constraints: exact hand sizes, no card in a suit the seat is void
+    /// in, and the still-unplayed passed cards pinned to the receiver.  Soft
+    /// evidence comes from the known incoming pass and from replaying public
+    /// choices in [`sample_world`](Self::sample_world).  The true deal
+    /// satisfies every hard constraint, so failure is a sampling accident —
     /// the caller retries.
     fn sample_hands(&mut self, view: &View<'_>) -> Option<[Hand; 4]> {
         let me = view.seat();
@@ -242,7 +247,23 @@ impl<R: Rng> MonteCarloBot<R> {
             false
         }
 
-        place(&cards, &allowed, &mut hands, &mut room, &mut self.rng).then_some(hands)
+        if !place(&cards, &allowed, &mut hands, &mut room, &mut self.rng) {
+            return None;
+        }
+
+        if let Some(received) = view.received() {
+            let giver = view.direction().giver(me);
+            let mut plausible = hands[giver as usize] | received;
+            for trick in view.tricks().iter().copied().chain(view.current_trick()) {
+                if let Some(card) = trick.card_from(giver) {
+                    plausible.insert(card);
+                }
+            }
+            if self.rng.random::<f64>() > pass_observation_likelihood(plausible, received) {
+                return None;
+            }
+        }
+        Some(hands)
     }
 
     /// Sample one world: a real [`Round`] at this decision point
@@ -277,6 +298,17 @@ impl<R: Rng> MonteCarloBot<R> {
         let mut round = Round::from_deal(*view.rules(), PassDirection::Hold, originals).ok()?;
         for trick in view.tricks().iter().copied().chain(view.current_trick()) {
             for (seat, card) in trick.plays() {
+                if seat != me {
+                    let likelihood = observation_likelihood(
+                        round.legal_plays(seat),
+                        round.current_trick().expect("replaying a play phase"),
+                        round.played(),
+                        card,
+                    );
+                    if likelihood < 1.0 && self.rng.random::<f64>() > likelihood {
+                        return None;
+                    }
+                }
                 round.play(seat, card).ok()?;
             }
         }
@@ -383,6 +415,47 @@ impl<R: Rng> MonteCarloBot<R> {
         out.sort_by(|a, b| b.equity.total_cmp(&a.equity));
         out
     }
+}
+
+/// A soft likelihood for one observed play under the rollout policy
+///
+/// Ducking last to a clean trick is evidence against holding a safe winner:
+/// the point-aware greedy policy would take control, but a real opponent can
+/// still choose otherwise, so the world is down-weighted rather than ruled
+/// out.  All other plays are deliberately neutral.
+fn observation_likelihood(legal: Hand, trick: hearts::Trick, played: Hand, observed: Card) -> f64 {
+    if trick.len() != 3 || trick.plays().any(|(_, card)| card.points() > 0) {
+        return 1.0;
+    }
+    let Some(led) = trick.suit() else {
+        return 1.0;
+    };
+    let winner = trick
+        .winner()
+        .and_then(|seat| trick.card_from(seat))
+        .expect("a led trick has a winner");
+    let predicted = greedy_play(legal, trick, played);
+    if observed.suit == led
+        && observed.rank < winner.rank
+        && predicted.suit == led
+        && predicted.rank > winner.rank
+    {
+        0.25
+    } else {
+        1.0
+    }
+}
+
+/// A soft likelihood for the cards known to have arrived from our giver
+///
+/// We cannot distinguish the giver's ten kept cards from its three incoming
+/// cards, so score the known pass against that deliberately over-broad
+/// plausible pre-pass holding.  Every mismatch costs only a quarter of the
+/// weight; an opponent need not share our pass policy.
+fn pass_observation_likelihood(plausible: Hand, received: Hand) -> f64 {
+    let modeled: Hand = greedy_pass(plausible, 1).into_iter().collect();
+    let misses = 3 - (modeled & received).len() as i32;
+    0.75f64.powi(misses)
 }
 
 /// The candidate passes: all triples of the [`PASS_POOL`] highest-scoring
@@ -824,6 +897,46 @@ mod tests {
                 assert_eq!(hand & known, known);
             }
         }
+    }
+
+    #[test]
+    fn a_safe_duck_softly_counts_against_holding_a_winner() {
+        fn card(text: &str) -> Card {
+            text.parse().expect("a valid card")
+        }
+        fn hand(text: &str) -> Hand {
+            text.parse().expect("a valid hand")
+        }
+        let mut clean = hearts::Trick::new(Seat::North);
+        for text in ["5♦", "2♦", "3♦"] {
+            clean.play(card(text)).unwrap();
+        }
+        assert_eq!(
+            observation_likelihood(hand(".47.."), clean, Hand::EMPTY, card("4♦")),
+            0.25,
+        );
+
+        let mut costly = hearts::Trick::new(Seat::North);
+        for text in ["5♣", "2♥", "3♣"] {
+            costly.play(card(text)).unwrap();
+        }
+        assert_eq!(
+            observation_likelihood(hand("47..."), costly, Hand::EMPTY, card("4♣")),
+            1.0,
+            "ducking a penalty trick is expected",
+        );
+    }
+
+    #[test]
+    fn a_dangerous_pass_is_more_likely() {
+        fn hand(text: &str) -> Hand {
+            text.parse().expect("a valid hand")
+        }
+        let plausible = hand("2345.6789.TJ.QKA");
+        let modeled: Hand = greedy_pass(plausible, 1).into_iter().collect();
+        let quiet = hand("234...");
+        assert_eq!(pass_observation_likelihood(plausible, modeled), 1.0);
+        assert!(pass_observation_likelihood(plausible, quiet) < 1.0);
     }
 
     #[test]
