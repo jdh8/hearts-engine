@@ -28,6 +28,9 @@ const PASS_POOL: usize = 6;
 /// to an unbatched run.
 const BATCH: usize = 32;
 
+/// Maximum multiple of the configured world count for a contested decision.
+const MAX_WIDTH_MULTIPLIER: usize = 3;
+
 /// What the rollouts said about one candidate: its per-world equities, its
 /// summed round points, and how many of those worlds it shot the moon in
 type Scored = (Vec<f64>, f64, u32);
@@ -95,7 +98,10 @@ impl Choice {
 /// growing batches, and a challenger the incumbent already statistically
 /// dominates is dropped at a batch boundary — once none remain, the
 /// remaining worlds are never rolled at all — so an easy decision costs a
-/// fraction of the full sample count.
+/// fraction of the full sample count.  If the configured width leaves the
+/// mean-best challenger inside the gate in both directions, the bot adds
+/// base-width samples for the surviving candidates, capped at three times
+/// the configured width.
 ///
 /// One candidate per decision is a moon attempt, rolled with the deciding
 /// seat shooting and the other three defending the way the live table
@@ -146,7 +152,7 @@ pub struct Assessment {
 }
 
 impl<R: Rng> MonteCarloBot<R> {
-    /// A bot with default strength: 128 worlds per decision
+    /// A bot with a default base width of 128 worlds per decision
     pub const fn new(rng: R) -> Self {
         Self {
             rng,
@@ -159,8 +165,9 @@ impl<R: Rng> MonteCarloBot<R> {
     /// Set how many worlds each decision samples
     ///
     /// More samples play stronger and slower; easy decisions stop at a
-    /// fraction of the budget.  The `parallel` feature divides the cost by
-    /// most of a machine's cores without changing a single decision.
+    /// fraction of the budget, while a contested decision may extend to
+    /// three times it.  The `parallel` feature divides the cost by most of a
+    /// machine's cores without changing a single decision.
     #[must_use]
     pub const fn samples(mut self, samples: u32) -> Self {
         self.samples = samples;
@@ -335,9 +342,33 @@ impl<R: Rng> MonteCarloBot<R> {
     /// to play: the greedy incumbent (`candidates[0]`) unless a challenger
     /// clears the significance gate
     fn choose(&mut self, view: &View<'_>, candidates: &[Candidate]) -> Choice {
-        let worlds = self.sample_worlds(view, self.samples);
-        let scored = score_worlds(view, &worlds, candidates, self.gate);
+        let scored = self.score(view, candidates);
         candidates[recommended(&scored, candidates, self.gate)].choice
+    }
+
+    /// Score one decision, extending only an unresolved incumbent/challenger
+    /// comparison by another base-width sample, up to three times the budget.
+    fn score(&mut self, view: &View<'_>, candidates: &[Candidate]) -> Vec<Scored> {
+        let mut scored: Vec<Scored> = vec![(Vec::new(), 0.0, 0); candidates.len()];
+        let mut alive: Vec<usize> = (1..candidates.len()).collect();
+        for _ in 0..MAX_WIDTH_MULTIPLIER {
+            let worlds = self.sample_worlds(view, self.samples);
+            if worlds.is_empty() {
+                break;
+            }
+            score_worlds(
+                view,
+                &worlds,
+                candidates,
+                self.gate,
+                &mut scored,
+                &mut alive,
+            );
+            if !contested(&scored, &alive, self.gate) {
+                break;
+            }
+        }
+        scored
     }
 
     /// Assess every candidate action for the current decision, each with
@@ -359,13 +390,12 @@ impl<R: Rng> MonteCarloBot<R> {
         if candidates.is_empty() {
             return Vec::new();
         }
-        let worlds = self.sample_worlds(view, self.samples);
-        if worlds.is_empty() {
+        let scored = self.score(view, &candidates);
+        if scored[0].0.is_empty() {
             // No consistent world: averaging zero rollouts would put NaN
             // in the public rows.
             return Vec::new();
         }
-        let scored = score_worlds(view, &worlds, &candidates, self.gate);
         let mean = |(equities, ev_sum, _): &Scored| {
             let n = equities.len() as f64;
             (equities.iter().sum::<f64>() / n, ev_sum / n)
@@ -582,7 +612,9 @@ fn score_worlds(
     worlds: &[Round],
     candidates: &[Candidate],
     gate: f64,
-) -> Vec<Scored> {
+    scored: &mut [Scored],
+    alive: &mut Vec<usize>,
+) {
     let me = view.seat();
     let rules = view.rules();
     let standing = absolute_standing(me, view.game_scores());
@@ -598,14 +630,12 @@ fn score_worlds(
         )
     };
 
-    let mut scored: Vec<Scored> = vec![(Vec::new(), 0.0, 0); candidates.len()];
-    let mut alive: Vec<usize> = (1..candidates.len()).collect();
     #[cfg(not(feature = "parallel"))]
     let mut scratch = worlds.first().cloned();
     let mut done = 0;
     while done < worlds.len() {
         let batch = &worlds[done..worlds.len().min(done + done.max(BATCH))];
-        for &i in std::iter::once(&0).chain(&alive) {
+        for &i in std::iter::once(&0).chain(alive.iter()) {
             let candidate = &candidates[i];
             #[cfg(feature = "parallel")]
             let results: Vec<(f64, f64, u32)> = {
@@ -639,14 +669,26 @@ fn score_worlds(
             }
         }
         done += batch.len();
-        if done < worlds.len() {
-            alive.retain(|&i| !beats(&scored[0].0, &scored[i].0, gate));
-            if alive.is_empty() {
-                break;
-            }
+        alive.retain(|&i| !beats(&scored[0].0, &scored[i].0, gate));
+        if alive.is_empty() {
+            break;
         }
     }
-    scored
+}
+
+/// Whether the strongest surviving challenger remains inside the
+/// significance gate in both directions, with no challenger already clear.
+fn contested(scored: &[Scored], alive: &[usize], gate: f64) -> bool {
+    let mean = |e: &[f64]| e.iter().sum::<f64>() / e.len() as f64;
+    let defend = &scored[0].0;
+    if alive.iter().any(|&i| beats(&scored[i].0, defend, gate)) {
+        return false;
+    }
+    alive
+        .iter()
+        .copied()
+        .max_by(|&a, &b| mean(&scored[a].0).total_cmp(&mean(&scored[b].0)))
+        .is_some_and(|best| !beats(defend, &scored[best].0, gate))
 }
 
 /// The index of the recommended candidate: the greedy incumbent
@@ -804,8 +846,7 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
             // Every legal card collapsed into one equivalence class.
             return greedy_play(legal, trick, view.played());
         }
-        let worlds = self.sample_worlds(view, self.samples);
-        let scored = score_worlds(view, &worlds, &candidates, self.gate);
+        let scored = self.score(view, &candidates);
         let best = recommended(&scored, &candidates, self.gate);
         self.shooting = candidates[best].shoot;
         match candidates[best].choice {
@@ -993,6 +1034,24 @@ mod tests {
         assert!(beats(&better, &base, 1.5));
         assert!(!beats(&base, &better, 1.5));
         assert!(!beats(&base, &base, 1.5));
+    }
+
+    #[test]
+    fn only_an_unresolved_best_challenger_is_contested() {
+        let base: Vec<f64> = (0..32).map(|i| f64::from(i % 5)).collect();
+        let uncertain: Vec<f64> = base
+            .iter()
+            .enumerate()
+            .map(|(i, x)| x + if i % 2 == 0 { 1.05 } else { -0.95 })
+            .collect();
+        let better: Vec<f64> = base.iter().map(|x| x + 1.0).collect();
+        let worse: Vec<f64> = base.iter().map(|x| x - 1.0).collect();
+        let scores = |challenger| vec![(base.clone(), 0.0, 0), (challenger, 0.0, 0)];
+
+        assert!(contested(&scores(uncertain), &[1], 1.5));
+        assert!(!contested(&scores(better), &[1], 1.5));
+        assert!(!contested(&scores(worse), &[1], 1.5));
+        assert!(!contested(&scores(base.clone()), &[], 1.5));
     }
 
     #[test]

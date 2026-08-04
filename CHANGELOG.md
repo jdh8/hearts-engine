@@ -86,6 +86,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mc:128` play drops from 3.97 to 2.18 ms (45 %), `mc:64` pass from 9.64 to
   5.87 ms (39 %), and `mc:1024` play from 21.39 to 11.49 ms (46 %).  The
   200-block arena CSV remains exactly unchanged.
+- Extend only contested Monte Carlo decisions: when the mean-best surviving
+  challenger is inside the significance gate in both directions, score
+  another base-width batch for the incumbent and survivors, capped at three
+  times the configured width.  Across 4,000 paired duplicate blocks on two
+  seeds, `mc:128` gains `+0.0118 ± 0.0049` matchpoint rank (2.4 SE),
+  `+0.0055 ± 0.0022` win equity (2.5 SE), and `+0.084 ± 0.042` points/deal
+  (2.0 SE), with `not-last` unchanged at `+0.0003 ± 0.0016`.  CPU work rises
+  47 %; a four-times cap was stronger on the first seed but cost 63 % more
+  wall time, so the three-times cap keeps the adaptive search near its
+  intended 1.5× budget.
 - Restrict soft card-location inference to the known incoming pass.  Public
   safe ducks no longer reweight worlds according to the exact greedy rollout
   policy.  The pass-only form remains favorable but unresolved over 2,000
@@ -284,11 +294,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dropped connection never loses a multi-hour run.  First result over 800
   throttled deals: his Deep CFR beats `mc:128` by +1.28 ± 0.21 payoff per
   seat-deal, shooting the moon in ~18 % of deals to our ~1 %.
-- Raise the fixed web hint from 128 to 256 sampled worlds.  The two widths
-  recommend different moves on 90 of 1,103 real human decisions (8.2 %),
-  while their native mean latency is 2.84 vs 4.96 ms on those positions;
-  1024 worlds changes another 8.4 % but costs 16.6 ms natively, leaving a
-  conservative margin for slower WebAssembly devices.
+- Raise the fixed web hint from 128 to 256 sampled worlds.  With contested
+  decisions now extending adaptively, the two widths recommend different
+  moves on 61 of 1,103 real human decisions (5.5 %), while their native mean
+  latency is 2.61 vs 4.37 ms on those positions; 1024 worlds changes another
+  6.3 % but costs 14.0 ms natively, leaving a conservative margin for slower
+  WebAssembly devices.
 
 ### Fixed
 
