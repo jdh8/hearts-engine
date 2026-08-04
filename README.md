@@ -33,9 +33,9 @@ The design triangle:
 - [`MonteCarloBot`] (feature `rand`): determinized Monte Carlo.  At each
   decision it samples hidden hands consistent with the `View` — voids
   respected, its own passed cards pinned to the receiver — replays the
-  public history into a real [`Round`] per world, softly favors hands that
-  explain opponents' observed choices under the rollout policy, rolls each
-  out, and picks the action with the best expected game equity.
+  public history into a real [`Round`] per world, softly favors hands where
+  the known incoming pass fits the pass policy, rolls each out, and picks the
+  action with the best expected game equity.
   One candidate per decision is a moon attempt — the deciding seat shoots
   and the other three defend — taken only when the rollouts reach the moon
   in most worlds, and then carried to the end of the round.

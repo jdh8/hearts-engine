@@ -58,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Restrict soft card-location inference to the known incoming pass.  Public
+  safe ducks no longer reweight worlds according to the exact greedy rollout
+  policy.  The pass-only form remains favorable but unresolved over 2,000
+  paired deals (`win +0.0042 ± 0.0026`, `rank +0.0046 ± 0.0058`).
 - Add soft card-location inference to Monte Carlo worlds.  A last-hand duck
   on a clean trick now counts against a hidden safe winner, and the known
   giver's pass softly favors hands where those cards rank as dangerous; both

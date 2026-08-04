@@ -40,7 +40,7 @@ what they removed:
   rollouts).
 - `src/mc.rs` — `MonteCarloBot`: `sample_hands` (randomized
   most-constrained-first backtracking under voids/known/capacities, softly
-  weighted by observed safe ducks and the known giver's pass),
+  weighted by the known giver's pass),
   world reconstruction, candidate generation (plays collapsed by
   rank-adjacency, passes = all 20 triples of the top-6 `pass_score`
   cards plus short-suit voids), common-random-number batches with gated
