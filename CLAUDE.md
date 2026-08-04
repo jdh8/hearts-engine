@@ -42,9 +42,9 @@ what they removed:
   most-constrained-first backtracking under voids/known/capacities),
   world reconstruction, candidate generation (plays collapsed by
   rank-adjacency, passes = all 20 triples of the top-6 `pass_score`
-  cards), common-random-number batches with gated challenger elimination,
-  `assess()`.  `Assessment::ev` is expected round points — LOWER is
-  better, unlike gin's signed gain.
+  cards plus short-suit voids), common-random-number batches with gated
+  challenger elimination, `assess()`.  `Assessment::ev` is expected round
+  points — LOWER is better, unlike gin's signed gain.
 - `tests/` — `view` (hygiene, void soundness, unseen identity, score
   rotation), `driver` (cheater rejection + retry, whole games),
   `proptest` (seeded termination + point conservation), `strength`

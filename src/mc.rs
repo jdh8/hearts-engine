@@ -19,7 +19,7 @@ use rand::{Rng, RngExt as _};
 const MAX_CANDIDATES: usize = 8;
 
 /// How many of the highest [`pass_score`] cards seed the pass triples:
-/// all 20 triples of the top 6 are rolled.
+/// all 20 triples of the top 6 are rolled before short-suit void candidates.
 const PASS_POOL: usize = 6;
 
 /// The world count of the first scoring batch; each later batch doubles the
@@ -386,7 +386,8 @@ impl<R: Rng> MonteCarloBot<R> {
 }
 
 /// The candidate passes: all triples of the [`PASS_POOL`] highest-scoring
-/// cards, the greedy triple first, plus the one moon pass
+/// cards, the greedy triple first; passes that empty a short side suit; plus
+/// the one moon pass
 fn pass_candidates(view: &View<'_>) -> Vec<Candidate> {
     let hand = view.hand();
     let mut ranked: Vec<Card> = hand.into_iter().collect();
@@ -399,21 +400,51 @@ fn pass_candidates(view: &View<'_>) -> Vec<Candidate> {
         .try_into()
         .expect("a passing hand holds thirteen cards");
 
-    ranked.truncate(PASS_POOL);
-
-    let mut out = Vec::with_capacity(21);
-    for i in 0..ranked.len() {
-        for j in i + 1..ranked.len() {
-            for k in j + 1..ranked.len() {
-                let triple = [ranked[i], ranked[j], ranked[k]];
-                out.push(Candidate {
-                    label: format!("pass {} {} {}", triple[0], triple[1], triple[2]),
-                    choice: Choice::Pass(triple),
-                    shoot: false,
-                });
+    let pool = &ranked[..ranked.len().min(PASS_POOL)];
+    let mut triples = Vec::<[Card; 3]>::with_capacity(23);
+    for i in 0..pool.len() {
+        for j in i + 1..pool.len() {
+            for k in j + 1..pool.len() {
+                triples.push([pool[i], pool[j], pool[k]]);
             }
         }
     }
+
+    // Independent card scores can award three separate void bonuses without
+    // actually emptying a suit.  Make every short non-spade void reachable,
+    // filling a one- or two-card suit's triple with the most dangerous cards
+    // outside it.
+    for suit in Suit::ASC.into_iter().filter(|&suit| suit != Suit::Spades) {
+        let suited: Vec<Card> = hand[suit].iter().map(|rank| Card { suit, rank }).collect();
+        if suited.is_empty() || suited.len() > 3 {
+            continue;
+        }
+        let mut cards = suited;
+        cards.extend(
+            ranked
+                .iter()
+                .copied()
+                .filter(|card| card.suit != suit)
+                .take(3 - cards.len()),
+        );
+        let triple: [Card; 3] = cards.try_into().expect("a passing hand has filler");
+        let set: Hand = triple.into_iter().collect();
+        if !triples
+            .iter()
+            .any(|old| old.iter().copied().collect::<Hand>() == set)
+        {
+            triples.push(triple);
+        }
+    }
+
+    let mut out: Vec<Candidate> = triples
+        .into_iter()
+        .map(|triple| Candidate {
+            label: format!("pass {} {} {}", triple[0], triple[1], triple[2]),
+            choice: Choice::Pass(triple),
+            shoot: false,
+        })
+        .collect();
     out.push(Candidate {
         label: format!("shoot, pass {} {} {}", losers[0], losers[1], losers[2]),
         choice: Choice::Pass(losers),
@@ -1096,7 +1127,7 @@ mod tests {
         let me = table.turn().expect("passing starts at North");
         let view = table.view(me);
         let cands = pass_candidates(&view);
-        assert_eq!(cands.iter().filter(|c| !c.shoot).count(), 20);
+        assert!(cands.iter().filter(|c| !c.shoot).count() >= 20);
         assert_eq!(cands.iter().filter(|c| c.shoot).count(), 1, "the moon pass");
 
         let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(6)).samples(16);
@@ -1109,6 +1140,27 @@ mod tests {
         for card in picks {
             assert!(view.hand().contains(card));
         }
+    }
+
+    #[test]
+    fn pass_candidates_can_create_a_void_outside_the_top_six() {
+        fn hand(text: &str) -> Hand {
+            text.parse().expect("a valid hand")
+        }
+        let mine = hand("234.QKA.QKA.JQKA");
+        let mut hands = [mine, Hand::EMPTY, Hand::EMPTY, Hand::EMPTY];
+        for (i, card) in (Hand::ALL - mine).into_iter().enumerate() {
+            hands[1 + i % 3].insert(card);
+        }
+        let round = Round::from_deal(Rules::new(), PassDirection::Left, hands).unwrap();
+        let table = Table::new(round);
+        let void = hand("234...");
+        assert!(
+            pass_candidates(&table.view(Seat::North))
+                .iter()
+                .any(|candidate| matches!(candidate.choice, Choice::Pass(cards)
+                if cards.into_iter().collect::<Hand>() == void))
+        );
     }
 
     #[test]

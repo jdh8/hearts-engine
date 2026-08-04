@@ -58,6 +58,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Let the Monte Carlo pass search consider passes that actually empty every
+  1–3 card non-spade suit, supplementing the 20 triples drawn from its six
+  highest independently scored cards.  Those scores could award three void
+  bonuses to three different suits while making no void reachable.  Over
+  6,195 paired duplicate deals, the new candidates improve `mc:128` by
+  `+0.0817 ± 0.0164` points/deal, `+0.0083 ± 0.0018` matchpoint rank, and
+  `+0.0038 ± 0.0008` win equity; moon attempts rise by `0.19 ± 0.04`
+  percentage points.
 - Make the shared greedy play/rollout policy point-aware.  Last to a clean
   trick it now takes control with the cheapest winner, while it still ducks
   a trick carrying penalties; on lead it works its shortest suit instead of
