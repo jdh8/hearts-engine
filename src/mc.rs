@@ -64,11 +64,13 @@ impl Choice {
                 .play(me, card)
                 .expect("a candidate play is legal in every sampled world"),
         }
+        let mut played = round.played();
         while let Some(seat) = round.turn() {
-            let card = rollout_play(&round, seat, shoot.then_some(me));
+            let card = rollout_play(&round, seat, shoot.then_some(me), played);
             round
                 .play(seat, card)
                 .expect("the rollout policy picks from legal_plays");
+            played.insert(card);
         }
         round.result().expect("a turnless round is finished")
     }

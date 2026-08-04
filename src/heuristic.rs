@@ -355,11 +355,18 @@ pub(crate) fn shoot_play(legal: Hand, trick: Trick, played: Hand) -> Card {
 /// three stop ducking whenever it is winning the trick.  Modelling the
 /// table as greedy duckers instead would make every moon look like a
 /// laydown.
+///
+/// `played` must equal `round.played()`; the caller threads it so a
+/// rollout does not refold the whole trick history at every play.
 #[cfg(feature = "rand")]
-pub(crate) fn rollout_play(round: &hearts::Round, seat: Seat, shooter: Option<Seat>) -> Card {
+pub(crate) fn rollout_play(
+    round: &hearts::Round,
+    seat: Seat,
+    shooter: Option<Seat>,
+    played: Hand,
+) -> Card {
     let legal = round.legal_plays(seat);
     let trick = round.current_trick().expect("a playing round has a trick");
-    let played = round.played();
 
     if let Some(shooter) = shooter {
         // A shot dies the moment anyone else scores; from there the shooter

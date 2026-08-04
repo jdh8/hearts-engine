@@ -58,6 +58,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Rollouts thread the running set of played cards through the policy
+  instead of refolding the whole trick history at every play, making
+  Monte Carlo decisions about 2.5× faster with bit-identical choices:
+  `mc:128` play drops from 10.8 to 4.0 ms and `mc:64` pass from 23.9 to
+  9.8 ms on the decision bench, and the 200-block arena reference is
+  byte-identical.  Width buys strength (`mc:1024` beats `mc:128` by
+  5.7 SE), so the same latency now affords about two and a half times
+  the worlds; retiering the web menu and the hint's world count to spend
+  that is still open.
 - Restrict soft card-location inference to the known incoming pass.  Public
   safe ducks no longer reweight worlds according to the exact greedy rollout
   policy.  The pass-only form remains favorable but unresolved over 2,000
