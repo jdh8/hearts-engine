@@ -52,9 +52,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   next human play, both jumping straight to the round result.  The leftover
   scoreless tricks are drained through the real engine, so the outcome is
   identical.  New predicate `Table::points_settled`.
+- `MonteCarloBot::gate` sets how many paired standard errors a challenger
+  must clear before the bot deviates from the greedy incumbent, next to
+  `samples()`.
 
 ### Changed
 
+- The default significance gate drops from 2.0 to 1.5 standard errors,
+  worth `+0.182 ± 0.046` points a deal for `mc:128` on paired duplicate
+  deals.  The 2.0 was a multiplicity correction — several challengers get
+  tested per decision — and the harness showed it over-corrects: strength
+  is monotone falling in the threshold across `[1.0, 2.5]`, and 1.5
+  recovers about half of what eight times the rollouts buy while keeping
+  some of the correction (1.0 vs 1.5 is unresolved at 2000 blocks).  The
+  moon-attempt rate is unaffected (`+0.3 SE`), because shoot candidates
+  clear a separate Bernoulli-majority bar.
 - The offer to end a settled round now stands until it is taken.  The web
   UI's "End round" button lives outside the per-frame action box and shows
   whenever the points are settled — including while the bots are playing, so
@@ -177,6 +189,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   high on it mostly *coming first*.  The bot is further along the "don't
   lose" axis than the "win" axis, which is what a points-linear objective
   predicts of it, and what headroom remains is on the `win` axis.
+- `rank` is now the primary A/B detector.  In every comparison above that
+  carried real signal it was the most sensitive column — 7.4 vs 5.7 SE on
+  the width test, 4.6-6.0 vs 3.6-5.8 across the gate sweep — the ordinary
+  Wilcoxon-vs-*t* efficiency gain of a bounded rank statistic over a
+  heavy-tailed margin, and a moon is a ±78-point tail.  `points` stays the
+  interpretable magnitude, `win` the ship gate.
 - Cross-engine tournament harness against the Deep CFR player of
   [brianberns/Hearts](https://github.com/brianberns/Hearts), the strongest
   open-source Hearts bot we know of: an F# shim (`tournament/CfrShim`)

@@ -105,6 +105,9 @@ impl Choice {
 pub struct MonteCarloBot<R: Rng> {
     rng: R,
     samples: u32,
+    /// How many paired standard errors a challenger must clear in
+    /// [`beats`] before the bot deviates from the greedy incumbent.
+    gate: f64,
     /// Whether a moon attempt is under way, carried across the tricks of
     /// one round so the search does not re-litigate it every turn.
     shooting: bool,
@@ -143,6 +146,7 @@ impl<R: Rng> MonteCarloBot<R> {
         Self {
             rng,
             samples: 128,
+            gate: 1.5,
             shooting: false,
         }
     }
@@ -155,6 +159,20 @@ impl<R: Rng> MonteCarloBot<R> {
     #[must_use]
     pub const fn samples(mut self, samples: u32) -> Self {
         self.samples = samples;
+        self
+    }
+
+    /// Set the significance gate: how many paired standard errors a
+    /// challenger must clear before the bot deviates from the greedy
+    /// incumbent
+    ///
+    /// The default is 1.5.  Duplicate-deal measurement found strength
+    /// monotone falling in the threshold over `[1.0, 2.5]` — the old 2.0
+    /// over-corrected for multiplicity by about 0.2 points a deal — while
+    /// a lower gate trusts more of the rollout noise.
+    #[must_use]
+    pub const fn gate(mut self, gate: f64) -> Self {
+        self.gate = gate;
         self
     }
 
@@ -295,8 +313,8 @@ impl<R: Rng> MonteCarloBot<R> {
     /// clears the significance gate
     fn choose(&mut self, view: &View<'_>, candidates: &[Candidate]) -> Choice {
         let worlds = self.sample_worlds(view, self.samples);
-        let scored = score_worlds(view, &worlds, candidates);
-        candidates[recommended(&scored, candidates)].choice
+        let scored = score_worlds(view, &worlds, candidates, self.gate);
+        candidates[recommended(&scored, candidates, self.gate)].choice
     }
 
     /// Assess every candidate action for the current decision, each with
@@ -324,7 +342,7 @@ impl<R: Rng> MonteCarloBot<R> {
             // in the public rows.
             return Vec::new();
         }
-        let scored = score_worlds(view, &worlds, &candidates);
+        let scored = score_worlds(view, &worlds, &candidates, self.gate);
         let mean = |(equities, ev_sum, _): &Scored| {
             let n = equities.len() as f64;
             (equities.iter().sum::<f64>() / n, ev_sum / n)
@@ -347,7 +365,7 @@ impl<R: Rng> MonteCarloBot<R> {
                 .collect();
         }
 
-        let best = recommended(&scored, &candidates);
+        let best = recommended(&scored, &candidates, self.gate);
         let mut out: Vec<Assessment> = candidates
             .iter()
             .zip(&scored)
@@ -492,7 +510,12 @@ fn play_candidates(view: &View<'_>) -> Vec<Candidate> {
 /// against the incumbent is negative on that prefix, and [`beats`] zips to
 /// the shorter slice, so [`recommended`] rejects it with no special
 /// casing.
-fn score_worlds(view: &View<'_>, worlds: &[Round], candidates: &[Candidate]) -> Vec<Scored> {
+fn score_worlds(
+    view: &View<'_>,
+    worlds: &[Round],
+    candidates: &[Candidate],
+    gate: f64,
+) -> Vec<Scored> {
     let me = view.seat();
     let rules = view.rules();
     let standing = absolute_standing(me, view.game_scores());
@@ -536,7 +559,7 @@ fn score_worlds(view: &View<'_>, worlds: &[Round], candidates: &[Candidate]) -> 
         }
         done += batch.len();
         if done < worlds.len() {
-            alive.retain(|&i| !beats(&scored[0].0, &scored[i].0));
+            alive.retain(|&i| !beats(&scored[0].0, &scored[i].0, gate));
             if alive.is_empty() {
                 break;
             }
@@ -563,12 +586,12 @@ fn score_worlds(view: &View<'_>, worlds: &[Round], candidates: &[Candidate]) -> 
 /// point between them sits within a hair of an even chance.  A moon rate
 /// over the sampled worlds is a plain Bernoulli count with none of the tail
 /// trouble, so require it to be a majority.
-fn recommended(scored: &[Scored], candidates: &[Candidate]) -> usize {
+fn recommended(scored: &[Scored], candidates: &[Candidate], gate: f64) -> usize {
     let mean = |e: &[f64]| e.iter().sum::<f64>() / e.len() as f64;
     let likely = |i: usize| 2 * scored[i].2 as usize > scored[i].0.len();
     let defend = &scored[0].0;
     (1..scored.len())
-        .filter(|&i| beats(&scored[i].0, defend))
+        .filter(|&i| beats(&scored[i].0, defend, gate))
         .filter(|&i| !candidates[i].shoot || likely(i))
         .max_by(|&a, &b| mean(&scored[a].0).total_cmp(&mean(&scored[b].0)))
         .unwrap_or(0)
@@ -580,10 +603,10 @@ fn recommended(scored: &[Scored], candidates: &[Candidate]) -> usize {
 /// The true value difference between most candidate actions is well below
 /// the rollout noise floor, and deviating from the solid greedy baseline
 /// on noise alone plays *worse* than the baseline.  A one-sided paired
-/// test — the mean difference at least two standard errors above zero,
+/// test — the mean difference at least `gate` standard errors above zero,
 /// since several challengers get tested per decision — keeps only the
 /// deviations the samples actually support.
-fn beats(challenger: &[f64], incumbent: &[f64]) -> bool {
+fn beats(challenger: &[f64], incumbent: &[f64], gate: f64) -> bool {
     let n = challenger.len() as f64;
     let mean = challenger
         .iter()
@@ -600,7 +623,7 @@ fn beats(challenger: &[f64], incumbent: &[f64]) -> bool {
         .map(|(c, i)| (c - i - mean).powi(2))
         .sum::<f64>()
         / n;
-    mean > 2.0 * (var / n).sqrt()
+    mean > gate * (var / n).sqrt()
 }
 
 /// Re-key the seat-relative [`View::game_scores`] by absolute [`Seat`]
@@ -701,7 +724,8 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
             return greedy_play(legal, trick, view.played());
         }
         let worlds = self.sample_worlds(view, self.samples);
-        let best = recommended(&score_worlds(view, &worlds, &candidates), &candidates);
+        let scored = score_worlds(view, &worlds, &candidates, self.gate);
+        let best = recommended(&scored, &candidates, self.gate);
         self.shooting = candidates[best].shoot;
         match candidates[best].choice {
             Choice::Play(card) => card,
@@ -868,12 +892,14 @@ mod tests {
             .enumerate()
             .map(|(i, x)| x + if i % 2 == 0 { 1.05 } else { -0.95 })
             .collect();
-        assert!(!beats(&noisy, &base));
+        assert!(!beats(&noisy, &base, 1.5));
+        // The same slim edge passes a gate loose enough to trust it.
+        assert!(beats(&noisy, &base, 0.1));
 
         let better: Vec<f64> = base.iter().map(|x| x + 1.0).collect();
-        assert!(beats(&better, &base));
-        assert!(!beats(&base, &better));
-        assert!(!beats(&base, &base));
+        assert!(beats(&better, &base, 1.5));
+        assert!(!beats(&base, &better, 1.5));
+        assert!(!beats(&base, &base, 1.5));
     }
 
     #[test]

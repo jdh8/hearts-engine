@@ -42,7 +42,7 @@ what they removed:
   most-constrained-first backtracking under voids/known/capacities),
   world reconstruction, candidate generation (plays collapsed by
   rank-adjacency, passes = all 20 triples of the top-6 `pass_score`
-  cards), common-random-number batches with 2-SE challenger elimination,
+  cards), common-random-number batches with gated challenger elimination,
   `assess()`.  `Assessment::ev` is expected round points — LOWER is
   better, unlike gin's signed gain.
 - `tests/` — `view` (hygiene, void soundness, unseen identity, score
@@ -61,6 +61,9 @@ what they removed:
   shipped rule), `not-last` (`1-1-1-0`) and `rank` (`3-2-1-0`), plus
   `moons`.  Their disagreement is the point — with four players
   "seek the win" and "avoid the loss" are different objectives.
+  A/B convention: `rank` is the primary detector (most sensitive under
+  Hearts' moon-heavy tails), `points` the interpretable magnitude,
+  `win` the ship gate.
   A homogeneous deterministic field (`greedy greedy greedy greedy`) must
   print `0.000±0.000` exactly; that is the harness's own self-check.
 - `web/` — nested crate with its own workspace; see `web/README.md` and
@@ -74,7 +77,8 @@ what they removed:
   seat is genuinely void.  Update it in exactly one place (`Table::step`)
   and recover it in `infer_voids` the same way.
 - Monte Carlo candidate 0 is the greedy incumbent; the bot deviates only
-  past the 2-SE paired gate in `beats`.  The `parallel` feature must stay
+  past the paired significance gate in `beats` (`gate()`, default
+  1.5 SE — measured, not taste).  The `parallel` feature must stay
   bit-identical: batch results are collected in world order and reduced
   sequentially.
 - Equity is `1/k` for a k-way game win, 0 for a loss, else
