@@ -58,6 +58,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Make the shared greedy play/rollout policy point-aware.  Last to a clean
+  trick it now takes control with the cheapest winner, while it still ducks
+  a trick carrying penalties; on lead it works its shortest suit instead of
+  letting global card order favor clubs.  For `mc:128` this improves the
+  paired matchpoint rank payoff by `+0.0359 ± 0.0114` (3.2 SE) and the point
+  margin by `+0.205 ± 0.095` per deal, with win equity unchanged
+  (`+0.0020 ± 0.0050`).  Moon attempts fall by `0.39 ± 0.17` percentage
+  points.
 - The default significance gate drops from 2.0 to 1.5 standard errors,
   worth `+0.182 ± 0.046` points a deal for `mc:128` on paired duplicate
   deals.  The 2.0 was a multiplicity correction — several challengers get

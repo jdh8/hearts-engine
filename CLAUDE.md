@@ -35,7 +35,7 @@ what they removed:
   leaves the table untouched so retries work.  Passing turn order is the
   first unpassed seat in `Seat::ALL`.
 - `src/heuristic.rs` — `pass_score`/`greedy_pass`/`greedy_play` (the
-  knowledge-free core, `pub(crate)`, shared with rollouts) and
+  point-aware knowledge-free core, `pub(crate)`, shared with rollouts) and
   `HeuristicBot` with the knowledge-based moon-defense overlay (OFF in
   rollouts).
 - `src/mc.rs` — `MonteCarloBot`: `sample_hands` (randomized

@@ -1186,7 +1186,7 @@ mod tests {
         let hands = [
             // North: leads 2♣, and ends holding S3 (duck) vs SK (break).
             hand(&[
-                "2♣", "3♣", "3♠", "K♠", "2♥", "3♥", "4♥", "5♥", "6♥", "7♥", "8♥", "9♥", "T♥",
+                "2♣", "3♣", "3♠", "K♠", "A♦", "3♥", "4♥", "5♥", "6♥", "7♥", "8♥", "9♥", "T♥",
             ]),
             // East: wins two club tricks and scoops the dumped Q♠.
             hand(&[
@@ -1196,9 +1196,9 @@ mod tests {
             hand(&[
                 "Q♠", "2♠", "4♠", "J♥", "Q♥", "K♥", "A♥", "3♦", "4♦", "5♦", "6♦", "7♦", "8♦",
             ]),
-            // West: void in spades and hearts, never overtakes the sweep.
+            // West: void in spades, never overtakes the sweep.
             hand(&[
-                "4♣", "5♣", "6♣", "7♣", "8♣", "9♣", "T♣", "9♦", "T♦", "J♦", "Q♦", "K♦", "A♦",
+                "4♣", "5♣", "6♣", "7♣", "8♣", "9♣", "T♣", "9♦", "T♦", "J♦", "Q♦", "K♦", "2♥",
             ]),
         ];
         let round = Round::from_deal(Rules::new(), PassDirection::Hold, hands).unwrap();
@@ -1214,7 +1214,7 @@ mod tests {
             (Seat::North, "3♣"),
             (Seat::East, "5♠"), // trick 3: East leads a low spade into North
             (Seat::South, "4♠"),
-            (Seat::West, "A♦"),
+            (Seat::West, "2♥"), // keep the trick costly, so plain greedy ducks
         ];
         for (seat, text) in script {
             assert_eq!(table.turn(), Some(seat));
@@ -1277,14 +1277,10 @@ mod tests {
             Some(Seat::North),
             "the shooting continuation takes all thirteen tricks",
         );
-        assert_ne!(
-            ace.roll(round.clone(), Seat::North, false).shooter(),
-            Some(Seat::North),
-            "the greedy continuation ducks the moon away",
-        );
-
         // End to end, against three bots that defend: the search has to find
-        // the shot *and* carry it across all thirteen tricks.
+        // the shot *and* carry it across all thirteen tricks.  The point-aware
+        // greedy policy can also take this clean opening trick now, so the
+        // fixture no longer requires the non-shoot continuation to fail.
         let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(3)).samples(64);
         let mut east = HeuristicBot::new();
         let mut south = HeuristicBot::new();

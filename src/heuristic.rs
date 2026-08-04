@@ -1,11 +1,11 @@
 //! [`HeuristicBot`]: a deterministic knowledge-based player
 //!
-//! The knowledge-free greedy core in this module — duck under the winner,
-//! dump the most dangerous card when void, smoke out the Q♠ — doubles as
-//! the rollout policy of the Monte Carlo bot.  The bot itself layers a
-//! knowledge-based moon-defense overlay on top: when a single opponent has
-//! swept every point so far, it stops ducking and takes a trick to kill
-//! the moon.
+//! The knowledge-free greedy core in this module — duck point-bearing
+//! tricks, take safe control, dump the most dangerous card when void, smoke
+//! out the Q♠ — doubles as the rollout policy of the Monte Carlo bot.  The
+//! bot itself layers a knowledge-based moon-defense overlay on top: when a
+//! single opponent has swept every point so far, it stops ducking and takes
+//! a trick to kill the moon.
 
 use crate::{Strategy, View};
 use hearts::{Card, Hand, Holding, Rank, Seat, Suit, Trick};
@@ -89,19 +89,12 @@ fn best_dump(legal: Hand, played: Hand) -> Card {
         .expect("legal plays are never empty on turn")
 }
 
-/// The knowledge-free greedy play policy, shared with the Monte Carlo
-/// rollouts
+/// The knowledge-free, point-aware greedy play policy shared with the Monte
+/// Carlo rollouts
 ///
 /// `legal` must be the acting seat's non-empty legal set, `trick` the
 /// trick in progress, and `played` every card played so far.
 pub(crate) fn greedy_play(legal: Hand, trick: Trick, played: Hand) -> Card {
-    let lowest = |cards: Hand| {
-        cards
-            .into_iter()
-            .min_by_key(|card| card.rank)
-            .expect("the set was checked non-empty")
-    };
-
     let Some(led) = trick.suit() else {
         // Leading.  While the Q♠ is at large and not ours, smoke it out
         // with low spades; otherwise lead our lowest card.
@@ -114,7 +107,13 @@ pub(crate) fn greedy_play(legal: Hand, trick: Trick, played: Hand) -> Card {
                 };
             }
         }
-        return lowest(legal);
+        // Work the shortest suit first: exhausting it creates a place to
+        // shed penalties, while a global low-card ordering merely broke ties
+        // toward clubs.
+        return legal
+            .into_iter()
+            .min_by_key(|card| (legal[card.suit].len(), card.rank))
+            .expect("legal plays are never empty on turn");
     };
 
     let follow = legal[led];
@@ -129,6 +128,19 @@ pub(crate) fn greedy_play(legal: Hand, trick: Trick, played: Hand) -> Card {
     // rides for free.
     if led == Suit::Spades && follow.contains(Rank::Q) && winner.rank > Rank::Q {
         return Card::QUEEN_OF_SPADES;
+    }
+
+    // Last to a clean trick, take the lead with the cheapest winner.  There
+    // is nobody left to dump a penalty on us, and control is worth more than
+    // ducking a scoreless trick.  Do not turn Q♠ itself into the points.
+    if trick.len() == 3 && trick.plays().all(|(_, card)| card.points() == 0) {
+        let mut winners = follow - below(winner.rank) - Holding::from_rank(winner.rank);
+        if led == Suit::Spades {
+            winners -= Holding::from_rank(Rank::Q);
+        }
+        if let Some(rank) = winners.iter().next() {
+            return Card { suit: led, rank };
+        }
     }
 
     // Duck with the highest card under the winner.
@@ -445,6 +457,36 @@ mod tests {
     }
 
     #[test]
+    fn last_hand_takes_only_a_point_free_trick() {
+        let mut clean = Trick::new(Seat::North);
+        for text in ["5♦", "2♦", "3♦"] {
+            clean.play(card(text)).unwrap();
+        }
+        assert_eq!(
+            greedy_play(hand(".47.."), clean, Hand::EMPTY),
+            card("7♦"),
+            "take control when nobody can add points"
+        );
+
+        let mut costly = Trick::new(Seat::North);
+        for text in ["5♣", "2♥", "3♣"] {
+            costly.play(card(text)).unwrap();
+        }
+        assert_eq!(
+            greedy_play(hand("47..."), costly, Hand::EMPTY),
+            card("4♣"),
+            "duck when the trick already carries a point"
+        );
+    }
+
+    #[test]
+    fn leading_works_the_shortest_suit() {
+        let trick = Trick::new(Seat::North);
+        let played = Hand::QUEEN_OF_SPADES;
+        assert_eq!(greedy_play(hand("234.5.67.89"), trick, played), card("5♦"));
+    }
+
+    #[test]
     fn void_dumps_the_queen_first() {
         let mut trick = Trick::new(Seat::North);
         trick.play(card("9♦")).unwrap();
@@ -549,8 +591,8 @@ mod tests {
         let played = hand("2345...");
         // Leading without the queen: low spades hunt it.
         assert_eq!(greedy_play(hand("9.9.9.29"), trick, played), card("2♠"));
-        // Holding the queen: no self-hunt, but the 2♠ is still our lowest.
-        assert_eq!(greedy_play(hand("9.9..29Q"), trick, played), card("2♠"));
+        // Holding the queen: no self-hunt, so work a shortest side suit.
+        assert_eq!(greedy_play(hand("9.9..29Q"), trick, played), card("9♣"));
         // Holding the queen and higher clubs: lead the lowest card, no hunt.
         assert_eq!(greedy_play(hand("4.9..9Q"), trick, played), card("4♣"));
     }
