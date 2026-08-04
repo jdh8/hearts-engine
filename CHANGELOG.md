@@ -78,8 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   9.8 ms on the decision bench, and the 200-block arena reference is
   byte-identical.  Width buys strength (`mc:1024` beats `mc:128` by
   5.7 SE), so the same latency now affords about two and a half times
-  the worlds; retiering the web menu and the hint's world count to spend
-  that is still open.
+  the worlds; the web menu and hint now spend part of that gain.
 - Restrict soft card-location inference to the known incoming pass.  Public
   safe ducks no longer reweight worlds according to the exact greedy rollout
   policy.  The pass-only form remains favorable but unresolved over 2,000
@@ -134,16 +133,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   noise crack plus inharmonic high partials) and the Q♠ dyad switches to
   sawtooth with a boosted peak, compensating for the ear's reduced
   sensitivity near 130 Hz.
-- Remap the web difficulty menu to bots that are actually distinct in
-  strength: Easy `newbie`, Medium `mc:16`, Hard `mc:64`, Expert `mc:128`
-  (matching the hint solver).  The old Medium `greedy` was no stronger
-  than Easy.  The four tiers now measure at 5.2 / 19.8 / 34.0 / 41.0 %
-  of games won in a shared lineup, so the ladder is real; Expert stops at
-  `mc:128` for latency, not for strength, since `mc:1024` does play
-  measurably better (see the diagnostics below).
+- Spend the rollout speedup on the web difficulty menu: Easy stays `newbie`,
+  while Medium rises to `mc:32`, Hard to `mc:128`, and Expert to `mc:256`,
+  matching the hint solver.  The four tiers win 3.4 / 25.1 / 32.5 / 39.1 %
+  of 300 duplicate game blocks in a shared lineup.  In the more sensitive
+  deal A/B, `mc:256` beats `mc:128` by `+0.0212 ± 0.0077` matchpoint rank
+  (2.8 SE) and `+0.149 ± 0.067` points/deal, with win equity positive but
+  unresolved at `+0.0043 ± 0.0035`.
 
 ### Internal
 
+- Keep the strict-majority bar for moon candidates after testing a 45 %
+  threshold.  Over 2,000 paired duplicate blocks, the looser bar leaves
+  matchpoint rank flat (`−0.0001 ± 0.0014`) and its win-equity gain is
+  unresolved (`+0.0009 ± 0.0006`, 1.6 SE), despite the intended rise in
+  moon attempts from 2.41 % to 2.65 %.  Points move `+0.028 ± 0.020` per
+  deal and `not-last` moves `−0.0008 ± 0.0005`; because the primary rank
+  detector did not improve, the 45 % arm was reverted and the conditional
+  40 % arm was skipped.
 - Close two strength-queue experiments after paired measurement.  Carrying
   compatible determinized particles between decisions and replenishing the
   rejected worlds is strength-neutral over 2,000 blocks (`rank +0.0016 ±
@@ -270,12 +277,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dropped connection never loses a multi-hour run.  First result over 800
   throttled deals: his Deep CFR beats `mc:128` by +1.28 ± 0.21 payoff per
   seat-deal, shooting the moon in ~18 % of deals to our ~1 %.
-- Fix the web hint at 128 sampled worlds instead of adapting it upward to
-  2048; the extra worlds cost latency with no measurable change in the
-  recommended play.  The strength diagnostics below now put that last
-  clause in doubt — `mc:1024` outplays `mc:128` by a wide margin — so the
-  hint's sample count is due a proper re-measurement; the latency argument
-  for capping it stands either way.
+- Raise the fixed web hint from 128 to 256 sampled worlds.  The two widths
+  recommend different moves on 90 of 1,103 real human decisions (8.2 %),
+  while their native mean latency is 2.84 vs 4.96 ms on those positions;
+  1024 worlds changes another 8.4 % but costs 16.6 ms natively, leaving a
+  conservative margin for slower WebAssembly devices.
 
 ### Fixed
 

@@ -6,7 +6,7 @@ import init, { WebGame } from './pkg/hearts_web.js';
 
 const PACE_MS = 650; // pause between bot steps, so the table can be followed
 const FLY_MS = 350; // card glide duration — keep in sync with `.ghost`
-const HINT_SAMPLES = 128; // == the Expert bot; more sampled worlds show no measurable gain
+const HINT_SAMPLES = 256; // match the Expert bot; 128 and 256 disagree often enough to matter
 
 const SUITS = {
   C: ['♣', 'green'],
@@ -65,10 +65,17 @@ function flashSting(glyph, cls) {
 async function main() {
   await init();
 
-  const savedDifficulty = localStorage.getItem('difficulty');
+  const oldDifficulty = localStorage.getItem('difficulty');
+  const migratedDifficulty = {
+    newbie: 'newbie',
+    'mc:16': 'mc:32',
+    'mc:64': 'mc:128',
+    'mc:128': 'mc:256',
+  }[oldDifficulty];
+  const savedDifficulty = localStorage.getItem('difficulty-v2') || migratedDifficulty;
   if (savedDifficulty) id('difficulty').value = savedDifficulty;
   id('difficulty').onchange = () => {
-    localStorage.setItem('difficulty', id('difficulty').value);
+    localStorage.setItem('difficulty-v2', id('difficulty').value);
   };
 
   const savedLog = localStorage.getItem('log-visible') === 'true';
