@@ -186,6 +186,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Confirm `moon_defense = 8` and `void_weight = 1` at the retuned pass
+  defaults.  The shipped trigger was tuned against the old pass policy and
+  only on a coarse grid, so a fine sweep (moon 5–12 crossed with void
+  0/1/2/4) reran it: over 1,000 paired games every moon arm at the shipped
+  `void_weight` sits within one SE of the default, while `void_weight = 2`
+  floats `+2.0 ± 1.3` pp across all moon arms.  8,000 games at a fresh
+  seed refute both — `void_weight = 2` lands at `−0.20 ± 0.42` pp (the
+  stage-one signal was correlated-deal noise) and `moon_defense = 6` is
+  resolvably worse at `−0.12 ± 0.07` pp.  The defaults survive the new
+  pass policy unchanged; nothing shipped.
 - The `tune` example sweeps the Cartesian product of all four
   `HeuristicConfig` knobs (`--heart-weight` and `--spade-guards` join the
   existing flags), reporting one flat row per arm — the paired
