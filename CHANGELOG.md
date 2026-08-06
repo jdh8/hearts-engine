@@ -186,6 +186,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Keep ordinary Monte Carlo rollouts greedy after testing promotion of a sole
+  opponent sweeper to a moon attempt at the live eight-point defense trigger.
+  The model has its intended mechanical effect: against three legacy
+  `mc0:32` opponents over 2,000 paired game blocks, opponent moons fall
+  `−0.0063 ± 0.0015` per round (4.2 SE).  It does not improve strength there:
+  matchpoint rank moves `−0.0106 ± 0.0154`, win equity
+  `+0.0019 ± 0.0062`, points/deal `−0.027 ± 0.047`, and own moons
+  `−0.0012 ± 0.0009`.  Worse, against three greedy bots over 2,000 paired
+  deal blocks it costs `−0.0256 ± 0.0073` rank (3.5 SE),
+  `−0.0144 ± 0.0034` win equity (4.2 SE), and `−0.148 ± 0.063`
+  points/deal.  Criterion puts the extra policy at about 14 % on `mc:128`
+  play and 10 % on `mc:64` pass; the paired arena ran 37.1 deal blocks/s and
+  1.56 game blocks/s.  The model and its measurement-only `mc0` control were
+  removed; the live deterministic moon-defense overlay remains unchanged.
 - Keep the Monte Carlo pass pool at six cards after testing seven.  The
   wider pool adds every triple containing the seventh-ranked pass card — 35
   score-pool candidates instead of 20 — but over 6,000 paired duplicate
