@@ -186,6 +186,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Keep the Monte Carlo pass pool at six cards after testing seven.  The
+  wider pool adds every triple containing the seventh-ranked pass card — 35
+  score-pool candidates instead of 20 — but over 6,000 paired duplicate
+  blocks on two seeds it moves the primary matchpoint-rank detector only
+  `+0.0010 ± 0.0012` (0.9 SE).  Points/deal move `+0.0066 ± 0.0123` and win
+  equity `+0.0010 ± 0.0005`, while not-last moves `−0.0008 ± 0.0004`;
+  `mc:64` pass latency rises from 6.50 to 8.71 ms (34 %).  The primary
+  detector does not clear the ship gate, so the wider pool was reverted and
+  nothing ships.
 - Confirm `moon_defense = 8` and `void_weight = 1` at the retuned pass
   defaults.  The shipped trigger was tuned against the old pass policy and
   only on a coarse grid, so a fine sweep (moon 5–12 crossed with void
