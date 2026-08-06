@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `HeuristicConfig` exposes the pass policy's two remaining hand-set
+  constants: `heart_weight`, the extra pass-score weight per rank for
+  hearts, and `spade_guards`, the low-spade count above which the
+  Q♠/A♠/K♠ danger bonuses stop applying.  Together with the existing
+  `void_weight` they make every contested `pass_score` term tunable; the
+  bonuses' 100/90/80 tier stays fixed because it is quasi-lexicographic —
+  its internal order is forced and it only competes with rank-scale terms
+  after a ~3× drop.
 - `MonteCarloBot` can now shoot the moon.  Every decision carries one extra
   candidate rolled with the deciding seat shooting — cash the highest card
   when leading, top the led suit when that wins, shed the cheapest
@@ -58,6 +66,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The default pass policy stops overweighting hearts and passes high
+  spades far more freely: `heart_weight` drops from the old hard-coded 2
+  to 0 and `spade_guards` rises from 3 to 5.  High hearts are duckable on
+  demand — a hand eats hearts only when forced to win a trick — while a
+  caught Q♠ is thirteen points at once, so the three pass slots are
+  better spent on queen-catchers, short suits, and plain high cards.
+  Self-play agrees emphatically and monotonically: on the 27-arm search
+  grid every step down in `heart_weight` and up in `spade_guards` helped,
+  and the confirmed arm wins `+20.04 ± 0.60` percentage points of paired
+  game-win rate against three old defaults on a fresh seed.  In the arena
+  A/B over 4,000 paired duplicate blocks the new default gains
+  `+0.188 ± 0.006` matchpoint rank (31.5 SE), `+0.058 ± 0.002` win equity
+  (23.7 SE), and `+1.521 ± 0.048` points/deal, and over 2,000 paired
+  games `+0.190 ± 0.005` game-win equity; the edge is transitive, not a
+  counter — an old-default bot seated among three new ones loses by
+  20.6 SE of rank.  The Monte Carlo bot inherits the new weights in its
+  rollout pass model and pass-candidate ranking, and the mc-vs-greedy
+  strength tripwire stays green.
 - Shoot-world rollout defenders now hold their fire until the shooter
   shows eight points — the same trigger the live moon-defense overlay
   fires on.  Defending from trick 1 priced every shot against a table no
@@ -160,6 +186,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The `tune` example sweeps the Cartesian product of all four
+  `HeuristicConfig` knobs (`--heart-weight` and `--spade-guards` join the
+  existing flags), reporting one flat row per arm — the paired
+  game-win-rate delta ± its paired standard error — plus a paste-able
+  `best:` line, replacing the fixed two-knob matrix.  An arm equal to the
+  default plays literally the same games and must print `+0.00 ± 0.00`
+  exactly, the tune-side analog of the arena's homogeneous-field
+  self-check.  The `arena` example accepts `greedy:V,H,G` specs setting
+  the three pass knobs, so tuned candidates can face the ship gate
+  directly.
 - Keep the strict-majority bar for moon candidates after testing a 45 %
   threshold.  Over 2,000 paired duplicate blocks, the looser bar leaves
   matchpoint rank flat (`−0.0001 ± 0.0014`) and its win-equity gain is

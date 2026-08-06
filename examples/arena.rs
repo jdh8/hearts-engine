@@ -62,7 +62,8 @@ struct Config {
 fn usage() {
     println!(
         "Usage: arena [--blocks N | --games N] [--seed N] [--ab SPEC] [--csv] [BOT BOT BOT BOT]\n\
-         BOT is greedy, newbie or mc[:samples]; defaults are four greedy bots.\n\
+         BOT is greedy[:V,H,G], newbie or mc[:samples]; defaults are four greedy bots.\n\
+         greedy:V,H,G sets the pass knobs void_weight,heart_weight,spade_guards.\n\
          N counts blocks, each one deal (or game seed) played four times rotated.\n\
          --ab reruns the same blocks with SPEC in slot 1 and reports the paired delta.\n\
          --csv writes one row per block per bot instead of the summary."
@@ -116,13 +117,31 @@ fn parse_args() -> Result<Option<Config>> {
 /// Build one bot, seeded so its search noise is a function of the deal and
 /// its slot alone — never of the deal stream or of who else is at the table.
 fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>> {
-    let (kind, samples) = match spec.split_once(':') {
-        Some((kind, samples)) => (kind, Some(samples.parse::<u32>()?)),
+    let (kind, suffix) = match spec.split_once(':') {
+        Some((kind, suffix)) => (kind, Some(suffix)),
         None => (spec, None),
     };
     match kind {
-        "greedy" if samples.is_none() => Ok(Box::new(HeuristicBot::new())),
-        "newbie" if samples.is_none() => {
+        "greedy" => {
+            let Some(suffix) = suffix else {
+                return Ok(Box::new(HeuristicBot::new()));
+            };
+            // greedy:V,H,G — the pass knobs; moon defense stays default.
+            let knobs: Vec<u8> = suffix
+                .split(',')
+                .map(|knob| knob.trim().parse().map_err(anyhow::Error::from))
+                .collect::<Result<_>>()?;
+            let &[void_weight, heart_weight, spade_guards] = knobs.as_slice() else {
+                bail!("greedy takes three knobs V,H,G (void,heart,guards), got {spec:?}");
+            };
+            // `HeuristicConfig` is non-exhaustive, so start from Default.
+            let mut heuristic = HeuristicConfig::default();
+            heuristic.void_weight = void_weight;
+            heuristic.heart_weight = heart_weight;
+            heuristic.spade_guards = spade_guards;
+            Ok(Box::new(HeuristicBot::with_config(heuristic)))
+        }
+        "newbie" if suffix.is_none() => {
             // The web UI's Easy tier: no moon defense, no void bonus.
             // `HeuristicConfig` is non-exhaustive, so start from Default.
             let mut heuristic = HeuristicConfig::default();
@@ -131,13 +150,14 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
             Ok(Box::new(HeuristicBot::with_config(heuristic)))
         }
         "mc" => {
+            let samples = suffix.map(str::parse::<u32>).transpose()?;
             let seed = deal_seed ^ (slot as u64 + 1).wrapping_mul(STRIDE);
             Ok(Box::new(
                 MonteCarloBot::new(StdRng::seed_from_u64(seed)).samples(samples.unwrap_or(32)),
             ))
         }
-        "greedy" | "newbie" => bail!("{kind} does not take a sample count"),
-        other => bail!("unknown bot {other:?} (greedy | newbie | mc[:samples])"),
+        "newbie" => bail!("newbie does not take a suffix"),
+        other => bail!("unknown bot {other:?} (greedy[:V,H,G] | newbie | mc[:samples])"),
     }
 }
 

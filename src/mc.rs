@@ -10,7 +10,7 @@
 use crate::heuristic::{
     greedy_pass, greedy_play, moon_defense, pass_score, rollout_play, shoot_play,
 };
-use crate::{Strategy, View};
+use crate::{HeuristicConfig, Strategy, View};
 use hearts::{Card, Hand, PassDirection, Phase, Rank, Round, RoundResult, Rules, Seat, Suit};
 use rand::{Rng, RngExt as _};
 
@@ -289,7 +289,9 @@ impl<R: Rng> MonteCarloBot<R> {
             let mut round = Round::from_deal(*view.rules(), view.direction(), hands).ok()?;
             for seat in Seat::ALL {
                 if seat != me {
-                    let pass: Hand = greedy_pass(hands[seat as usize], 1).into_iter().collect();
+                    let pass: Hand = greedy_pass(hands[seat as usize], HeuristicConfig::default())
+                        .into_iter()
+                        .collect();
                     round.pass(seat, pass).ok()?;
                 }
             }
@@ -445,7 +447,9 @@ impl<R: Rng> MonteCarloBot<R> {
 /// plausible pre-pass holding.  Every mismatch costs only a quarter of the
 /// weight; an opponent need not share our pass policy.
 fn pass_observation_likelihood(plausible: Hand, received: Hand) -> f64 {
-    let modeled: Hand = greedy_pass(plausible, 1).into_iter().collect();
+    let modeled: Hand = greedy_pass(plausible, HeuristicConfig::default())
+        .into_iter()
+        .collect();
     let misses = 3 - (modeled & received).len() as i32;
     0.75f64.powi(misses)
 }
@@ -456,7 +460,7 @@ fn pass_observation_likelihood(plausible: Hand, received: Hand) -> f64 {
 fn pass_candidates(view: &View<'_>) -> Vec<Candidate> {
     let hand = view.hand();
     let mut ranked: Vec<Card> = hand.into_iter().collect();
-    ranked.sort_by_key(|&card| -pass_score(hand, card, 1));
+    ranked.sort_by_key(|&card| -pass_score(hand, card, HeuristicConfig::default()));
 
     // The mirror of the greedy triple: the three cards the pass policy least
     // wants gone are low cards of long suits, which is exactly the ballast a
@@ -923,7 +927,9 @@ mod tests {
             text.parse().expect("a valid hand")
         }
         let plausible = hand("2345.6789.TJ.QKA");
-        let modeled: Hand = greedy_pass(plausible, 1).into_iter().collect();
+        let modeled: Hand = greedy_pass(plausible, HeuristicConfig::default())
+            .into_iter()
+            .collect();
         let quiet = hand("234...");
         assert_eq!(pass_observation_likelihood(plausible, modeled), 1.0);
         assert!(pass_observation_likelihood(plausible, quiet) < 1.0);
