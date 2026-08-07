@@ -66,6 +66,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A Monte Carlo rollout that ends the game now pays normalized `3-2-1-0`
+  matchpoints — a sole win 1, then ⅔, ⅓, and 0 for a sole last, ties
+  averaged — instead of `1/k` for a k-way shared win and 0 for every
+  loss.  The old terminal payoff went flat the moment the bot could no
+  longer come first, so late-game decisions between 2nd and last fell
+  back on the mid-game margin alone, and it priced a two-way tie for the
+  crown (½) below a good running position; the new payoff is exactly the
+  arena's `rank` column, so the bot fights for the placement the primary
+  detector scores.  Only the terminal branch changes — the mid-game
+  margin band is untouched, which keeps this distinct from the reverted
+  mid-game matchpoint surrogate — so single-deal play is bit-identical
+  (the 200-block arena CSV is byte-identical across the change) and only
+  games to the target move.  Over 2,000 paired game blocks (replicated
+  across two seeds), `mc:128` in a greedy field gains `+0.110 ± 0.008`
+  matchpoint rank (13.9 SE), `+0.043 ± 0.003` not-last (15.9 SE), and
+  `+0.323 ± 0.017` points/round (18.5 SE), and pays `−0.009 ± 0.004` win
+  equity (−2.2 SE) for it.  The columns disagreeing is the design working:
+  a rank optimizer stops taking win-or-last gambles the old objective
+  liked, and the `win` gate polices strategy changes *under* an objective
+  — this entry changes the objective itself to the rank payoff.
+- Solver reads are player-facing in expected finishing place,
+  `4 − 3·equity`, in `[1, 4]` with 1 a sole win: the terminal `play`
+  example's hints and the web hint panel (whose JSON field renames
+  `equity` to `place`) — the average-placement convention of four-player
+  tables, and both hint columns now read lower-is-better.
 - The default pass policy stops overweighting hearts and passes high
   spades far more freely: `heart_weight` drops from the old hard-coded 2
   to 0 and `spade_guards` rises from 3 to 5.  High hearts are duckable on

@@ -90,8 +90,9 @@ impl Choice {
 /// policy on all seats and picks the action with the best
 /// expected value *for the game*: each rollout's result lands on the
 /// running [`game scores`](View::game_scores), a result that reaches
-/// [`game_target`](Rules::game_target) counts as the k-way win or loss of
-/// the game it is, and anything short of one counts its round points.
+/// [`game_target`](Rules::game_target) counts the final standings as
+/// normalized `3-2-1-0` matchpoints with ties averaged, and anything
+/// short of one counts its round points.
 /// The same worlds are reused across candidate actions (common random
 /// numbers), and the bot deviates from the greedy baseline only when the
 /// paired samples show a statistically clear gain.  Worlds are rolled in
@@ -135,10 +136,14 @@ pub struct Assessment {
     /// A rendered label for the action, e.g. `"play Q♠"` or
     /// `"pass Q♠ A♥ K♥"`.
     pub action: String,
-    /// Mean game-winning equity in `[0, 1]` — the quantity the bot
-    /// maximizes, so candidates rank by it.  A shared win counts `1/k`.  A
-    /// candidate the bot eliminated early averages over the worlds it saw
-    /// before elimination rather than the full sample count.
+    /// Mean equity in `[0, 1]` — the quantity the bot maximizes, so
+    /// candidates rank by it.  A rollout that ends the game pays its
+    /// normalized `3-2-1-0` matchpoints (a sole win 1, a sole last 0,
+    /// ties averaged); one that does not pays the mid-game margin band.
+    /// For a player-facing figure, `4 − 3·equity` is the expected
+    /// finishing place.  A candidate the bot eliminated early averages
+    /// over the worlds it saw before elimination rather than the full
+    /// sample count.
     pub equity: f64,
     /// Mean round points this action costs the deciding seat — **lower is
     /// better**, unlike the gin engine's signed gain.  Averaged over the
@@ -764,19 +769,22 @@ fn absolute_standing(me: Seat, relative: [u16; 4]) -> [u16; 4] {
 }
 
 /// The value to `me` of a rollout that charged `scores`, from the
-/// `standing` game totals: `1/k` for a k-way shared win of the game, 0 for
-/// a loss, otherwise affine in the round-point margin
+/// `standing` game totals: normalized `3-2-1-0` matchpoints if the game
+/// ends, otherwise affine in the round-point margin
 ///
 /// A game ends when a post-round total reaches the target, and the lowest
-/// total wins — shared by k seats for `1/k` each, matching
-/// [`FinalScore::winners`](hearts::FinalScore).  Short of a clinch the
+/// total finishes first.  A finished game pays its matchpoints over three
+/// — a sole win 1, then ⅔, ⅓, and 0 for a sole last, ties averaged — the
+/// same payoff the arena's `rank` column scores, so the search keeps
+/// fighting for placement after the win is gone.  Short of a clinch the
 /// value is `0.5` plus the margin between the opponents' average round
-/// points and ours, scaled into `(1/4, 3/4)` — a guaranteed gap below a
-/// sole win and above any loss, so [`beats`] deviates from the round-point
-/// objective only when a rollout can actually end the game.  (A k-way
-/// shared win pays `1/k`, which for `k ≥ 2` lands at or below the
-/// mid-game band — deliberately: sharing the crown is worth less than a
-/// strong position in a game still running.)
+/// points and ours, scaled into `(1/4, 3/4)` — strictly below a sole win
+/// and strictly above a sole last, so [`beats`] deviates from the
+/// round-point objective only when a rollout can actually end the game.
+/// A two-way crown (⅚) also outranks any running position; deeper ties
+/// and the middle placements interleave with the band on purpose — a
+/// middling finish is commensurate with a middling position in a game
+/// still running.
 fn equity(scores: &[u16; 4], me: Seat, standing: [u16; 4], rules: &Rules) -> f64 {
     let mut totals = standing;
     for seat in Seat::ALL {
@@ -784,12 +792,12 @@ fn equity(scores: &[u16; 4], me: Seat, standing: [u16; 4], rules: &Rules) -> f64
         *total = total.saturating_add(scores[seat as usize]);
     }
     if totals.iter().any(|&total| total >= rules.game_target) {
-        let min = *totals.iter().min().expect("four totals");
-        return if totals[me as usize] == min {
-            1.0 / totals.iter().filter(|&&total| total == min).count() as f64
-        } else {
-            0.0
-        };
+        // Twice the 3-2-1-0 matchpoints stays an integer through the tie
+        // average; `ahead + share ≤ 4` bounds the subtraction at 6.
+        let mine = totals[me as usize];
+        let ahead = totals.iter().filter(|&&total| total < mine).count();
+        let share = totals.iter().filter(|&&total| total == mine).count();
+        return (6 - 2 * ahead - (share - 1)) as f64 / 6.0;
     }
     let mine = f64::from(scores[me as usize]);
     let others: f64 = Seat::ALL
@@ -995,15 +1003,26 @@ mod tests {
     fn equity_is_terminal_at_the_target() {
         let rules = Rules::new();
         let me = Seat::North;
-        // North ends lowest when West crosses: a clean win.
+        // North ends lowest when West crosses: a sole win.
         let win = equity(&[0, 10, 10, 6], me, [50, 60, 70, 95], &rules);
         assert_eq!(win, 1.0);
-        // North crosses alone: a loss.
+        // North crosses alone: a sole last.
         let loss = equity(&[13, 13, 0, 0], me, [95, 0, 0, 0], &rules);
         assert_eq!(loss, 0.0);
-        // A two-way shared win pays a half.
-        let shared = equity(&[0, 0, 13, 13], me, [50, 50, 60, 95], &rules);
-        assert_eq!(shared, 0.5);
+        // The middle placements pay their matchpoints over three.
+        let second = equity(&[0, 0, 13, 13], me, [50, 40, 60, 95], &rules);
+        assert_eq!(second, 2.0 / 3.0);
+        let third = equity(&[0, 0, 13, 13], me, [50, 40, 30, 95], &rules);
+        assert_eq!(third, 1.0 / 3.0);
+        // Ties average: two crowns share 2½ matchpoints, four share 1½.
+        let crowns = equity(&[0, 0, 13, 13], me, [50, 50, 60, 95], &rules);
+        assert_eq!(crowns, 5.0 / 6.0);
+        let level = equity(&[13, 7, 3, 3], me, [87, 93, 97, 97], &rules);
+        assert_eq!(level, 0.5);
+        // Exactly the target ends the game; one point short stays a round.
+        assert_eq!(equity(&[13, 13, 0, 0], me, [87, 0, 0, 0], &rules), 0.0);
+        let running = equity(&[13, 13, 0, 0], me, [86, 0, 0, 0], &rules);
+        assert!((0.25..=0.75).contains(&running), "{running} is mid-game");
     }
 
     #[test]

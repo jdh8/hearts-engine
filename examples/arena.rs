@@ -166,8 +166,9 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
 /// loss-averse `1-1-1-0`, and matchpoints `3-2-1-0`.
 ///
 /// Lowest wins, matching [`FinalScore::winners`](hearts::FinalScore).  Ties
-/// share their band — `1/k` for a k-way win, as the crate's own equity
-/// does — so every column keeps its constant sum exactly.
+/// share their band — `1/k` for a k-way win in `win`, tied ranks averaged
+/// in `rank` (the crate's own equity payoff) — so every column keeps its
+/// constant sum exactly.
 fn payoffs(scores: [u16; 4]) -> [[f64; 4]; 4] {
     let sum: u16 = scores.iter().sum();
     let low = *scores.iter().min().expect("four scores");

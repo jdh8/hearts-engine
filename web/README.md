@@ -27,9 +27,9 @@ Pick Easy, Medium, Hard, or Expert in the header; the saved choice applies to
 the next new game. Click cards to pass or play. `h` opens a solver hint, `l`
 toggles the log, and `n` starts a new game (or continues after a round).
 
-The hint uses the same 256-world search as the Expert bot. Equity is the
-chance to win the game; round EV is expected penalty points, so lower is
-better.
+The hint uses the same 256-world search as the Expert bot. Place is your
+expected finish (1 is a sole win, 4 is last); round EV is expected penalty
+points. Lower is better for both.
 
 ## Deploy
 

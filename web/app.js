@@ -510,14 +510,14 @@ function renderHint(rows) {
   const body = rows.map((row) =>
     `<div class="hint-row${row.recommended ? ' best' : ''}">` +
       `<span>${escapeHtml(row.action)}</span>` +
-      `<span>${(row.equity * 100).toFixed(1)}%</span>` +
+      `<span>${row.place.toFixed(2)}</span>` +
       `<span>${row.ev.toFixed(1)}</span></div>`,
   ).join('');
   const panel = id('hint');
   panel.innerHTML =
     '<h2>Solver</h2>' +
-    '<p class="hint-note">Equity is your chance to win. Round EV is expected penalty points; lower is better.</p>' +
-    '<div class="hint-row hint-head"><span>Move</span><span>Equity</span><span>Round EV ↓</span></div>' +
+    '<p class="hint-note">Place is your expected finish; 1 is a sole win, 4 is last. Round EV is expected penalty points; lower is better.</p>' +
+    '<div class="hint-row hint-head"><span>Move</span><span>Place ↓</span><span>Round EV ↓</span></div>' +
     body;
   panel.hidden = false;
 }

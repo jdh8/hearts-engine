@@ -101,6 +101,36 @@ Writing your own bot is implementing [`Strategy`]'s two decisions against a
   `cargo run --release --example arena -- --blocks 2000 mc:64 greedy greedy greedy`
   (`--games N`, `--ab SPEC` for a paired A/B, `--csv`)
 
+## Benchmarking
+
+The arena is the instrument.  Its unit is a paired duplicate block — one
+deal, or one game seed played to the target, run four times with the
+lineup rotated so every bot plays all four hands — which divides seat and
+card luck out of the comparison.  Convention: `rank` (3-2-1-0 matchpoints)
+is the primary A/B detector, `points` the interpretable magnitude, and
+`win` the ship gate.
+
+1. **Paired A/B.**  Within one build,
+   `arena --games 2000 --ab mc:128 mc:64 greedy greedy greedy` reruns the
+   same blocks with the `--ab` spec in slot 1 and prints the paired
+   per-block delta in standard-error units.  Across two builds, run each
+   at the same `--seed` with `--csv` and join rows per block: deal seeds
+   are a pure function of `(--seed, block)`, so the builds are paired
+   card for card.  Self-checks: a homogeneous deterministic field
+   (`greedy` four times) must print exactly `0.000±0.000`, and each
+   block's payoff columns sum to their constants.
+2. **Scaling ladder.**  `mc:32` → `mc:128` → `mc:256` against a greedy
+   field.  A real improvement shifts the whole compute curve, not one
+   rung of it.
+3. **Absolute anchor.**  `examples/vs_cfr` bridges to brianberns' Deep
+   CFR Hearts over duplicate 2-v-2 seating (see `tournament/README.md`,
+   including the Q♠-breaks-hearts rules caveat).  On record: Deep CFR
+   beats `mc:128` by `1.28 ± 0.21` points per seat-deal over 800 deals,
+   shooting the moon in ~18% of deals to our ~1% — the measured gap is
+   moon aggression, not card play.
+4. **Tripwire.**  `cargo test --release --test strength -- --ignored`
+   asserts `mc:128` beats a greedy field by at least two points a round.
+
 [hearts]: https://crates.io/crates/hearts
 [`Strategy`]: https://docs.rs/hearts-engine/latest/hearts_engine/trait.Strategy.html
 [`View`]: https://docs.rs/hearts-engine/latest/hearts_engine/struct.View.html

@@ -567,8 +567,9 @@ struct Snapshot {
 struct HintJson {
     /// The move label, e.g. `"play Q♠"` or `"pass Q♠ A♥ K♥"`.
     action: String,
-    /// Chance to win the game if this move is played, in `[0, 1]`.
-    equity: f64,
+    /// Expected finishing place if this move is played, in `[1, 4]` —
+    /// lower is better, `1.0` a sole win.
+    place: f64,
     /// Expected round points the move costs you — lower is better.
     ev: f64,
     /// Whether this is the bot's own pick.
@@ -640,8 +641,9 @@ impl WebGame {
     }
 
     /// A solver read on the current decision as JSON: candidate moves with
-    /// equity (chance to win the game) and expected round points (lower is
-    /// better), the bot's own pick flagged; empty when the move is forced.
+    /// their expected finishing place and expected round points (both lower
+    /// is better), the bot's own pick flagged; empty when the move is
+    /// forced.
     ///
     /// `samples` is the Monte Carlo world count; the JS side fixes it at
     /// 256, matching the Expert bot.
@@ -653,7 +655,7 @@ impl WebGame {
             .into_iter()
             .map(|a| HintJson {
                 action: a.action,
-                equity: a.equity,
+                place: 4.0 - 3.0 * a.equity,
                 ev: a.ev,
                 recommended: a.recommended,
             })

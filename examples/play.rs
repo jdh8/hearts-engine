@@ -10,8 +10,8 @@
 //! Unicode form (`QS`, `Q♠`).  On passing deals, type the three cards to
 //! send as a spaced list; in play, type one card from the legal set shown.
 //! Type `hint` at either prompt for the Monte Carlo solver's read on the
-//! current decision: every candidate move with its chance to win the game
-//! and expected round points (lower is better).
+//! current decision: every candidate move with its expected finishing
+//! place (1 is best) and expected round points (lower is better).
 
 use anyhow::{Context as _, Result, bail};
 use hearts_engine::hearts::{Card, Hand, Phase, Rank, Rules, Seat, Suit};
@@ -168,23 +168,23 @@ fn show_position(view: &View<'_>) {
 }
 
 /// Print the Monte Carlo solver's read on the current decision: each
-/// candidate with its win-the-game equity and expected penalty points,
-/// ranked by equity and the bot's own pick highlighted.
+/// candidate with its expected finishing place and expected penalty
+/// points, ranked by equity and the bot's own pick highlighted.
 fn print_hints(rows: &[Assessment]) {
     if rows.is_empty() {
         println!("Nothing to weigh here — the move is forced.");
         return;
     }
-    println!("Solver — equity is your chance to win the game; lower EV is better:");
+    println!("Solver — place is your expected finish (1 is best); lower EV is better:");
     if !rows[0].recommended {
-        println!("(Equities within the sampling noise are ties; the bot holds its default move.)");
+        println!("(Places within the sampling noise are ties; the bot holds its default move.)");
     }
     for row in rows {
         let mark = if row.recommended { "▸" } else { " " };
         let line = format!(
-            "  {mark} {:<22} {:>5.1}%   EV {:>4.1} points",
+            "  {mark} {:<22} place {:>4.2}   EV {:>4.1} points",
             row.action,
-            row.equity * 100.0,
+            4.0 - 3.0 * row.equity,
             row.ev,
         );
         if row.recommended {

@@ -82,9 +82,11 @@ what they removed:
   1.5 SE — measured, not taste).  The `parallel` feature must stay
   bit-identical: batch results are collected in world order and reduced
   sequentially.
-- Equity is `1/k` for a k-way game win, 0 for a loss, else
-  `0.5 + margin/112` pinned inside (¼, ¾) — a guaranteed gap below any
-  clinch.
+- Equity at a game-ending rollout is normalized `3-2-1-0` matchpoints,
+  ties averaged (sole win 1, sole last 0 — the arena's `rank` column);
+  else `0.5 + margin/112` pinned inside (¼, ¾), strictly below a sole
+  win and above a sole last, middle placements interleaving by design.
+  Player-facing surfaces show expected place, `4 − 3·equity`.
 - `Table::step` must leave the table untouched on `IllegalAction`.
 
 ## wasm traps (web/)
