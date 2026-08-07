@@ -528,9 +528,11 @@ fn pass_candidates(view: &View<'_>) -> Vec<Candidate> {
 }
 
 /// The candidate plays: the legal set collapsed by rank adjacency — cards
-/// of a suit separated only by ranks this seat has seen (own hand or
-/// played) *and* of equal penalty value are interchangeable — the greedy
-/// incumbent first, capped at [`MAX_CANDIDATES`]
+/// of a suit separated only by ranks this seat has seen (own hand, or
+/// played to a **completed** trick — a rank sitting in the trick in progress
+/// still separates the cards above it from the cards below) *and* of equal
+/// penalty value are interchangeable — the greedy incumbent first, capped at
+/// [`MAX_CANDIDATES`]
 fn play_candidates(view: &View<'_>) -> Vec<Candidate> {
     let legal = view.legal_plays();
     if legal.len() < 2 {
@@ -539,7 +541,10 @@ fn play_candidates(view: &View<'_>) -> Vec<Candidate> {
     let trick = view.current_trick().expect("a play decision has a trick");
     let played = view.played();
     let incumbent = greedy_play(legal, trick, played);
-    let seen = view.hand() | played;
+    // Cards in the trick in progress are committed but still contest THIS
+    // trick — behind a led J♦ the Q♦ wins and the T♦ does not, so they are no
+    // sequence.  Collapse only across ranks gone in completed tricks.
+    let seen = view.hand() | (played - trick.cards());
 
     let mut reps = vec![incumbent];
     for suit in Suit::ASC {
@@ -1146,10 +1151,10 @@ mod tests {
     #[test]
     fn assess_lists_an_all_equivalent_class_rather_than_refusing() {
         // South follows a led spade holding only 5♠ and 7♠.  From the hand
-        // they look like two separate plays; but 6♠ is already on the table,
-        // so they are interchangeable — one class, one candidate.  A human
-        // cannot read that off the hand, so the hint must still list both
-        // tied instead of going blank.
+        // they look like two separate plays; but 6♠ is gone in a completed
+        // trick, so they are interchangeable — one class, one candidate.  A
+        // human cannot read that off the hand, so the hint must still list
+        // both tied instead of going blank.
         let hand = |cards: &str| -> Hand {
             cards
                 .split_whitespace()
@@ -1157,19 +1162,19 @@ mod tests {
                 .collect()
         };
         let hands = [
-            hand("2C 3C 4C 2S 3S 4S 2D 3D 4D 5D 2H 3H 4H"), // North: leads 2♣
-            hand("AC KC 6S 8S 9S TS 6D 7D 8D 9D 5H 6H 7H"), // East: wins T1, leads 6♠
-            hand("5C 6C 7C 5S 7S TD JD QD KD AD 8H 9H TH"), // South: spades are 5♠ 7♠ only
-            hand("8C 9C TC JC QC JS QS KS AS JH QH KH AH"), // West
+            hand("2C 3C 4C 5C 2S 3S 4S 2D 3D 4D 5D 2H 3H"), // North: leads 2♣
+            hand("AC KC QC 9S 6D 7D 8D 9D 5H 6H 7H 8H 9H"), // East: wins T1, leads 9♠
+            hand("6C 7C 8C 9C TC JC 5S 7S TD JD QD KD AD"), // South: spades are 5♠ 7♠ only
+            hand("6S 8S TS JS QS KS AS 4H TH JH QH KH AH"), // West: club-void, sheds 6♠
         ];
         let mut round = Round::from_deal(Rules::new(), PassDirection::Hold, hands)
             .expect("a full partition deals");
         for (seat, card) in [
             (Seat::North, "2C"),
             (Seat::East, "AC"),
-            (Seat::South, "5C"),
-            (Seat::West, "8C"),
-            (Seat::East, "6S"), // East won trick 1; now it leads the gap card
+            (Seat::South, "6C"),
+            (Seat::West, "6S"), // the gap card, gone in a completed trick
+            (Seat::East, "9S"), // East won trick 1; it leads above the 5-7 span
         ] {
             round
                 .play(seat, card.parse().expect("valid card"))
@@ -1202,6 +1207,65 @@ mod tests {
         assert!(
             rows[0].equity == rows[1].equity && rows[0].ev == rows[1].ev,
             "equivalent plays carry the same read",
+        );
+    }
+
+    #[test]
+    fn a_rank_in_the_live_trick_does_not_bridge_a_sequence() {
+        // South follows a led J♦ holding 7♦ T♦ Q♦ K♦ A♦, with 8♦ and 9♦ gone
+        // in trick 1.  The J♦ is committed but still contests THIS trick:
+        // Q♦ K♦ A♦ take it and 7♦ T♦ do not, so the holding is two classes,
+        // not one.  Counting the live J♦ as gone collapsed all five.
+        let hand = |cards: &str| -> Hand {
+            cards
+                .split_whitespace()
+                .map(|c| c.parse().expect("valid card"))
+                .collect()
+        };
+        let hands = [
+            hand("9D 2D 3D 4D 2S 3S 4S 5S 6S 2H 3H 4H 5H"), // North: club-void, sheds 9♦
+            hand("TC JC QC KC AC JD QS KS AS JH QH KH AH"), // East: wins T1, leads J♦
+            hand("2C 3C 4C 5C 6C 7C 8C 9C 7D TD QD KD AD"), // South: leads 2♣, follows the J♦
+            hand("8D 5D 6D 7S 8S 9S TS JS 6H 7H 8H 9H TH"), // West: club-void, sheds 8♦
+        ];
+        let mut round = Round::from_deal(Rules::new(), PassDirection::Hold, hands)
+            .expect("a full partition deals");
+        for (seat, card) in [
+            (Seat::South, "2C"),
+            (Seat::West, "8D"),
+            (Seat::North, "9D"),
+            (Seat::East, "AC"),
+            (Seat::East, "JD"), // East won trick 1; now it leads into the gap
+        ] {
+            round
+                .play(seat, card.parse().expect("valid card"))
+                .expect("a legal scripted play");
+        }
+
+        let table = Table::new(round);
+        assert_eq!(
+            table.turn(),
+            Some(Seat::South),
+            "South is to follow the diamond"
+        );
+        let view = table.view(Seat::South);
+
+        let plays: Vec<Card> = play_candidates(&view)
+            .iter()
+            .filter(|c| !c.shoot)
+            .filter_map(|c| match c.choice {
+                Choice::Play(card) => Some(card),
+                Choice::Pass(_) => None,
+            })
+            .collect();
+        let jack: Card = "JD".parse().expect("valid card");
+        assert!(
+            plays.iter().any(|card| card.rank > jack.rank),
+            "a play that takes the trick is weighed: {plays:?}",
+        );
+        assert!(
+            plays.iter().any(|card| card.rank < jack.rank),
+            "a play that ducks the trick is weighed: {plays:?}",
         );
     }
 

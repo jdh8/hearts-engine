@@ -209,6 +209,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (2.8 SE) and `+0.149 ± 0.067` points/deal, with win equity positive but
   unresolved at `+0.0043 ± 0.0035`.
 
+### Fixed
+
+- `MonteCarloBot`'s rank-adjacency collapse treated a card sitting in the
+  trick in progress as a gone rank, so it bridged sequences across it: behind
+  a led J♦, a holding of 7♦ T♦ Q♦ K♦ A♦ folded into a single class, and the
+  bot ducked with the lowest card without ever rolling out the three plays
+  that take the trick.  The hint panel, which lists an all-equivalent class
+  as tied, showed all five followers at the same equity.  Sequences now
+  collapse only across ranks gone in *completed* tricks.
+
 ### Internal
 
 - Keep ordinary Monte Carlo rollouts greedy after testing promotion of a sole
