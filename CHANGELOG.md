@@ -221,6 +221,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Open `docs/` with two passing design proposals:
+  `docs/passing-opponent-model.md` (configurable pass models, an offline
+  incoming-card prior, world-generator noise) and `docs/passing-shape.md`
+  (a sequential set-aware `greedy_pass`, spade and double void
+  candidates, a shape-aware moon pass).  Ranked proposals with
+  measurement plans and kill criteria; design only, nothing ships yet.
 - Keep ordinary Monte Carlo rollouts greedy after testing promotion of a sole
   opponent sweeper to a moon attempt at the live eight-point defense trigger.
   The model has its intended mechanical effect: against three legacy
