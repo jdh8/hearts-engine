@@ -26,6 +26,7 @@ let state; // snapshot currently on screen (the "before" state during a step)
 let busy = false;
 let epoch = 0; // bumped when a click outruns an in-flight animation
 let selectedPass = new Set();
+let moonEffectRound = null; // a showdown may render repeatedly; cue it once
 
 const id = (x) => document.getElementById(x);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,10 +35,16 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let muted = localStorage.getItem('muted') === 'true';
 const glassBreak = new Audio(new URL('./audio/glass-break.mp3', import.meta.url));
 const queenKnell = new Audio(new URL('./audio/queen-knell.mp3', import.meta.url));
+const moonFireworks = new Audio(new URL('./audio/moon-fireworks.mp3', import.meta.url));
+const moonGunshot = new Audio(new URL('./audio/moon-gunshot.mp3', import.meta.url));
 glassBreak.preload = 'auto';
 glassBreak.volume = 0.6;
 queenKnell.preload = 'auto';
 queenKnell.volume = 0.35;
+moonFireworks.preload = 'auto';
+moonFireworks.volume = 0.55;
+moonGunshot.preload = 'auto';
+moonGunshot.volume = 0.2;
 
 function playSound(sound) {
   if (muted) return;
@@ -139,6 +146,7 @@ async function newGame() {
   if (busy) return;
   setBusy(true);
   selectedPass.clear();
+  moonEffectRound = null;
   hideHint();
   const seed = String(Math.floor(Math.random() * 2 ** 53));
   game = new WebGame(id('difficulty').value, '', seed);
@@ -322,6 +330,7 @@ function render(snapshot, trickOverride = null, winnerOverride = null) {
   renderActions(snapshot);
   renderLog(snapshot);
   renderShowdown(snapshot);
+  renderMoonFeedback(snapshot);
   // Outside `#actions`, which is wiped every frame: the offer has to survive
   // the bots' turns, so it lives in a node no render can destroy.
   id('end-round').hidden = !snapshot.points_settled;
@@ -481,7 +490,8 @@ function renderShowdown(snapshot) {
   const result = snapshot.result || [0, 0, 0, 0];
   const moon = snapshot.moon == null
     ? ''
-    : `<div class="moon">${escapeHtml(NAMES[snapshot.moon])} shot the moon!</div>`;
+    : `<div class="moon ${snapshot.moon === 0 ? 'moon-player' : 'moon-opponent'}">` +
+      `${escapeHtml(NAMES[snapshot.moon])} shot the moon!</div>`;
   const rows = snapshot.score_sheet.map((totals, index) =>
     `<tr><th scope="row">${index + 1}</th>${totals.map((value) => `<td>${value}</td>`).join('')}</tr>`,
   ).join('');
@@ -498,6 +508,91 @@ function renderShowdown(snapshot) {
     `<button id="showdown-action">${action}</button></div>`;
   id('showdown-action').onclick = snapshot.game_over ? newGame : continueGame;
   panel.hidden = false;
+}
+
+// A moon is present only on a terminal snapshot. The showdown can be rendered
+// again while controls settle, so key the cue to the round rather than the
+// number of renders. Visuals still fire while muted, like the card stings.
+function renderMoonFeedback(snapshot) {
+  if (
+    snapshot.moon == null ||
+    (!snapshot.round_over && !snapshot.game_over) ||
+    moonEffectRound === snapshot.round_no
+  ) return;
+
+  moonEffectRound = snapshot.round_no;
+  const playerShot = snapshot.moon === 0;
+  playSound(playerShot ? moonFireworks : moonGunshot);
+  launchMoonBurst(playerShot);
+}
+
+function launchMoonBurst(playerShot) {
+  const layer = document.createElement('div');
+  layer.className = `moon-burst ${playerShot ? 'moon-burst-player' : 'moon-burst-opponent'}`;
+  layer.setAttribute('aria-hidden', 'true'); // the showdown already announces the result
+
+  if (playerShot) buildPlayerBurst(layer);
+  else buildOpponentBurst(layer);
+
+  id('showdown').prepend(layer);
+  setTimeout(() => layer.remove(), 2400);
+}
+
+function buildPlayerBurst(layer) {
+  const colours = ['#ff4d6d', '#ffd166', '#38bdf8', '#5ee38d', '#c77dff', '#ff8c42'];
+  const centres = [[17, 30], [83, 31], [50, 13]];
+
+  for (let index = 0; index < 45; index++) {
+    const particle = document.createElement('i');
+    const centre = centres[index % centres.length];
+    const angle = (index * 137.5) % 360;
+    const radians = angle * Math.PI / 180;
+    const distance = 95 + (index % 6) * 22;
+    particle.className = 'moon-particle moon-firework-particle';
+    particle.style.setProperty('--x', `${centre[0]}%`);
+    particle.style.setProperty('--y', `${centre[1]}%`);
+    particle.style.setProperty('--dx', `${Math.cos(radians) * distance}px`);
+    particle.style.setProperty('--dy', `${Math.sin(radians) * distance}px`);
+    particle.style.setProperty('--spin', `${angle + 90}deg`);
+    particle.style.setProperty('--particle-colour', colours[index % colours.length]);
+    particle.style.setProperty('--delay', `${(index % 3) * 0.12}s`);
+    layer.appendChild(particle);
+  }
+
+  for (let index = 0; index < 24; index++) {
+    const confetti = document.createElement('i');
+    confetti.className = 'moon-particle moon-confetti';
+    confetti.style.setProperty('--x', `${2 + (index * 41) % 96}%`);
+    confetti.style.setProperty('--drift', `${((index * 29) % 180) - 90}px`);
+    confetti.style.setProperty('--spin', `${360 + (index % 5) * 120}deg`);
+    confetti.style.setProperty('--particle-colour', colours[(index * 5) % colours.length]);
+    confetti.style.setProperty('--delay', `${0.08 + (index % 7) * 0.05}s`);
+    confetti.style.setProperty('--duration', `${1.45 + (index % 5) * 0.1}s`);
+    layer.appendChild(confetti);
+  }
+}
+
+function buildOpponentBurst(layer) {
+  const flash = document.createElement('i');
+  flash.className = 'moon-impact-flash';
+  const ring = document.createElement('i');
+  ring.className = 'moon-impact-ring';
+  layer.append(flash, ring);
+
+  const colours = ['#ff3b30', '#c81d17', '#721c18', '#f58a80', '#2b1717'];
+  for (let index = 0; index < 30; index++) {
+    const spark = document.createElement('i');
+    const angle = (index * 47) % 360;
+    const radians = angle * Math.PI / 180;
+    const distance = 260 + (index % 6) * 42;
+    spark.className = 'moon-particle moon-impact-spark';
+    spark.style.setProperty('--dx', `${Math.cos(radians) * distance}px`);
+    spark.style.setProperty('--dy', `${Math.sin(radians) * distance}px`);
+    spark.style.setProperty('--spin', `${angle}deg`);
+    spark.style.setProperty('--particle-colour', colours[index % colours.length]);
+    spark.style.setProperty('--delay', `${(index % 4) * 0.015}s`);
+    layer.appendChild(spark);
+  }
 }
 
 function winnerLine(winners) {

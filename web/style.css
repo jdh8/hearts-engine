@@ -349,7 +349,95 @@ body.log-hidden .log { display: none; }
   backdrop-filter: blur(2px);
 }
 .showdown[hidden] { display: none; }
+.moon-burst {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.moon-particle,
+.moon-impact-flash,
+.moon-impact-ring {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+.moon-firework-particle {
+  left: var(--x);
+  top: var(--y);
+  width: 0.28rem;
+  height: 1.05rem;
+  border-radius: 999px;
+  background: var(--particle-colour);
+  box-shadow: 0 0 0.65rem var(--particle-colour);
+  transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) rotate(var(--spin));
+  animation: moon-firework 1.45s cubic-bezier(.12, .7, .2, 1) var(--delay) both;
+}
+.moon-confetti {
+  left: var(--x);
+  top: -1rem;
+  width: 0.48rem;
+  height: 0.75rem;
+  border-radius: 2px;
+  background: var(--particle-colour);
+  transform: translate(var(--drift), calc(100vh + 3rem)) rotate(var(--spin));
+  animation: moon-confetti var(--duration) ease-in var(--delay) both;
+}
+@keyframes moon-firework {
+  0% { transform: translate(-50%, -50%) scale(0.15); opacity: 0; }
+  12% { opacity: 1; }
+  72% { transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) rotate(var(--spin)); opacity: 1; }
+  100% { transform: translate(-50%, -50%) translate(var(--dx), calc(var(--dy) + 2.5rem)) rotate(var(--spin)); opacity: 0; }
+}
+@keyframes moon-confetti {
+  0% { transform: translate(0, -1rem) rotate(0); opacity: 0; }
+  8% { opacity: 1; }
+  100% { transform: translate(var(--drift), calc(100vh + 3rem)) rotate(var(--spin)); opacity: 0.9; }
+}
+.moon-impact-flash {
+  inset: 0;
+  background: radial-gradient(circle at 50% 48%, rgba(255, 64, 49, 0.72), rgba(143, 19, 15, 0.22) 22%, transparent 53%);
+  animation: moon-impact-flash 0.65s ease-out both;
+}
+.moon-impact-ring {
+  left: 50%;
+  top: 48%;
+  width: 10rem;
+  height: 10rem;
+  border: 0.55rem solid rgba(225, 43, 34, 0.82);
+  border-radius: 50%;
+  box-shadow: 0 0 2rem rgba(255, 46, 35, 0.68), inset 0 0 1.25rem rgba(31, 8, 8, 0.7);
+  transform: translate(-50%, -50%) scale(3.8);
+  animation: moon-impact-ring 0.85s cubic-bezier(.1, .65, .2, 1) both;
+}
+.moon-impact-spark {
+  left: 50%;
+  top: 48%;
+  width: 0.34rem;
+  height: 2.2rem;
+  border-radius: 999px;
+  background: var(--particle-colour);
+  box-shadow: 0 0 0.75rem rgba(255, 45, 34, 0.72);
+  transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) rotate(var(--spin)) scaleY(0.2);
+  animation: moon-impact-spark 0.95s cubic-bezier(.12, .72, .18, 1) var(--delay) both;
+}
+@keyframes moon-impact-flash {
+  from { opacity: 0.95; }
+  to { opacity: 0; }
+}
+@keyframes moon-impact-ring {
+  from { transform: translate(-50%, -50%) scale(0.12); opacity: 1; }
+  to { transform: translate(-50%, -50%) scale(3.8); opacity: 0; }
+}
+@keyframes moon-impact-spark {
+  0% { transform: translate(-50%, -50%) scaleY(0.1); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) rotate(var(--spin)) scaleY(0.2); opacity: 0; }
+}
 .showdown-sheet {
+  position: relative;
+  z-index: 1;
   width: min(34rem, 100%);
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
@@ -361,7 +449,9 @@ body.log-hidden .log { display: none; }
   text-align: center;
 }
 .showdown h2 { margin: 0 0 0.65rem; font-size: 1.2rem; }
-.moon { margin: 0 0 0.7rem; border-radius: 6px; background: #f7e7a8; padding: 0.45rem; font-weight: 800; color: #734b00; }
+.moon { margin: 0 0 0.7rem; border-radius: 6px; padding: 0.45rem; font-weight: 800; }
+.moon-player { background: #f7e7a8; color: #734b00; }
+.moon-opponent { background: #f5d5d2; color: #8e211b; }
 .winner { margin-bottom: 0.7rem; color: #9c2724; font-size: 1.45rem; font-weight: 850; }
 .round-result { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.35rem; margin: 0 0 0.8rem; }
 .round-result span { display: flex; flex-direction: column; border-radius: 5px; background: #efeee7; padding: 0.32rem; font-variant-numeric: tabular-nums; }
@@ -399,9 +489,21 @@ body.log-hidden .log { display: none; }
   .ghost, .hand .card.clickable, .broken { transition-duration: 0.01ms; }
   /* Keep the sting visible — it is the accessible channel — just motionless. */
   .sting { animation-name: sting-fade; animation-duration: 0.9s; }
+  .moon-confetti { display: none; }
+  .moon-firework-particle,
+  .moon-impact-flash,
+  .moon-impact-ring,
+  .moon-impact-spark {
+    animation: moon-feedback-fade 0.9s ease-out both;
+  }
 }
 @keyframes sting-fade {
   from { opacity: 0.95; }
   70% { opacity: 0.9; }
+  to { opacity: 0; }
+}
+@keyframes moon-feedback-fade {
+  from { opacity: 0.9; }
+  70% { opacity: 0.75; }
   to { opacity: 0; }
 }

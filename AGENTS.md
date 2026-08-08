@@ -1,0 +1,143 @@
+# hearts-engine
+
+Bots and strategy tooling for Hearts over the sibling
+[hearts](https://crates.io/crates/hearts) mechanics crate, mirroring the
+architecture of [gin-rummy-engine](https://crates.io/crates/gin-rummy-engine):
+the `Strategy` trait + information-hygienic `View` + `Table` driver
+triangle, a heuristic bot whose knowledge-free core doubles as the Monte
+Carlo rollout policy, and a determinized `MonteCarloBot`.  The `web/`
+subdirectory is a non-published wasm front end deployed to GitHub Pages.
+
+Two deliberate simplifications over the gin engine — do not reintroduce
+what they removed:
+
+- **No `Knowledge` ledger.**  Everything a Hearts seat may know is
+  derivable from the public history the `Round` already retains (passes
+  are kept, all plays are public).  The only cached inference is the
+  common-knowledge void table on `Table`; `Table::new` recovers it from
+  any mid-round `Round` via `infer_voids`.
+- **No `sim.rs`.**  Monte Carlo worlds are real `hearts::Round`s: sample
+  hidden hands, rebuild the *original* hands (current ∪ own plays), deal
+  them as a `PassDirection::Hold` round, and replay the public history.
+  The rules can never drift from the rollouts because they are the same
+  code.  `tests/`' reconstruction test guards this.
+
+## Map of the crate
+
+- `src/lib.rs` — re-exports; `pub use hearts;` so downstreams need one dep.
+- `src/strategy.rs` — `Strategy`: `pass_cards -> [Card; 3]`,
+  `play_card -> Card`, object-safe.
+- `src/view.rs` — `View`: the legal whitelist (own hand, history, own
+  pass/received, `is_void`, `known_cards`, `unseen`, `possible_cards`,
+  seat-relative `game_scores` clockwise from the seat).
+- `src/driver.rs` — `Table` (round + voids + scores), `step`/`play`,
+  `play_round`, rand-gated `play_game`; `EngineError::IllegalAction`
+  leaves the table untouched so retries work.  Passing turn order is the
+  first unpassed seat in `Seat::ALL`.
+- `src/heuristic.rs` — `pass_score`/`pass_key`/`greedy_pass`/`greedy_play`
+  (the point-aware knowledge-free core, `pub(crate)`, shared with rollouts)
+  and `HeuristicBot` with the knowledge-based moon-defense overlay (OFF in
+  rollouts).  `greedy_pass` is *sequential*: three rounds of argmax over
+  `pass_key`, removing each pick and rescoring, so the void bonus escalates
+  along a completing suit and a triple that finishes a void beats three
+  that start three.  `pass_key` is `(pass_score, danger, rank)` and is
+  injective over a hand — no tie ever falls to iteration order.
+- `src/mc.rs` — `MonteCarloBot`: `sample_hands` (randomized
+  most-constrained-first backtracking under voids/known/capacities, softly
+  weighted by the known giver's pass),
+  world reconstruction, candidate generation (plays collapsed by
+  rank-adjacency, passes = the `greedy_pass` incumbent, then every triple
+  of the top-6 `pass_key` cards, plus short non-spade-suit voids, all
+  deduped as card sets), common-random-number batches with gated
+  challenger elimination, `assess()`.  `Assessment::ev` is expected round
+  points — LOWER is better, unlike gin's signed gain.  The three places
+  the search models *passing* — the rollout opponents' passes, that soft
+  weight, and the candidate ranking (whose first triple is the incumbent)
+  — all read one `pass_model()` `HeuristicConfig`, defaulting to the
+  shipped one; play-side knobs stay out of it.
+- `tests/` — `view` (hygiene, void soundness, unseen identity, score
+  rotation), `driver` (cheater rejection + retry, whole games),
+  `proptest` (seeded termination + point conservation), `strength`
+  (`#[ignore]`d mc-vs-greedy tripwire), `pass_prior` (`#[ignore]`d
+  offline measurement of what the greedy pass sends downstream; needs
+  `--nocapture`, since the printed table is the result).
+- `examples/` — `play` (terminal, human = South), `arena`, `tune`.
+  `arena` is the measurement instrument: its unit is a **block** (one
+  deal, or one game seed, played four times with the lineup rotated so
+  every bot plays all four hands), deal seeds are a pure function of
+  `(--seed, block)`, and bots are built *inside* the trial seeded from
+  the deal — so two runs at one seed are paired card for card even
+  across rebuilds, and blocks parallelize with no effect on the output.
+  It reports five columns: `points` (`mean(others) − own`, the search
+  signal) and the three constant-sum rank payoffs `win` (`1-0-0-0`, the
+  shipped rule), `not-last` (`1-1-1-0`) and `rank` (`3-2-1-0`), plus
+  `moons` (completed moons per round for the measured seat).  Their
+  disagreement is the point — with four players
+  "seek the win" and "avoid the loss" are different objectives.
+  A/B convention: `rank` is the primary detector (most sensitive under
+  Hearts' moon-heavy tails), `points` the interpretable magnitude,
+  `win` the ship gate.
+  A homogeneous deterministic field (`greedy greedy greedy greedy`) must
+  print `0.000±0.000` exactly; that is the harness's own self-check.
+- `web/` — nested crate with its own workspace; see `web/README.md` and
+  the wasm traps below.
+
+## Invariants
+
+- Strategies never see a `Round`; only `Table` hands out `View`s.  A new
+  `View` accessor must be information a seat may legally see.
+- The void table is *sound*, never complete: `is_void` true implies the
+  seat is genuinely void.  Update it in exactly one place (`Table::step`)
+  and recover it in `infer_voids` the same way.
+- Monte Carlo candidate 0 is the greedy incumbent, *enforced* by calling
+  `greedy_pass`/`greedy_play` rather than inherited from a ranking that
+  happens to agree — the sequential pass policy and the flat `pass_key`
+  ranking part company after the first card.  The bot deviates only
+  past the paired significance gate in `beats` (`gate()`, default
+  1.5 SE — measured, not taste).  The `parallel` feature must stay
+  bit-identical: batch results are collected in world order and reduced
+  sequentially.
+- Equity at a game-ending rollout is normalized `3-2-1-0` matchpoints,
+  ties averaged (sole win 1, sole last 0 — the arena's `rank` column);
+  else `0.5 + margin/112` pinned inside (¼, ¾), strictly below a sole
+  win and above a sole last, middle placements interleaving by design.
+  Player-facing surfaces show expected place, `4 − 3·equity`.
+- `Table::step` must leave the table untouched on `IllegalAction`.
+
+## wasm traps (web/)
+
+- `web/.cargo/config.toml` pins
+  `[target.wasm32-unknown-unknown] rustflags = ["-Ctarget-feature=+reference-types"]`
+  — a global `-Ctarget-cpu=native` otherwise leaks into the cross-compile
+  and breaks wasm-bindgen's externref transform.  Do not delete it.
+- `getrandom = { version = "0.4", features = ["wasm_js"] }` as a
+  wasm-only dependency.
+- The web crate must depend on the SAME `hearts` version as the engine,
+  or path/registry duplicates make `Card` types unequal.
+- Build with `wasm-pack build --release --target web`; serve `web/` and
+  click through a deal before shipping UI changes.
+
+## Verification — mirror CI before declaring work done
+
+```sh
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
+cargo test --all-features
+cargo test                        # default features (serial MC leg)
+cargo check --no-default-features # the rand-free surface still compiles
+```
+
+When `Cargo.toml` dependencies change, also run the minimal-versions
+check: `cargo +nightly update -Z direct-minimal-versions && cargo +nightly
+check --all-features --all-targets`, then restore `Cargo.lock` (it is
+committed).  The strength tripwire is manual:
+`cargo test --release --test strength -- --ignored`.
+
+## After updating the codebase
+
+- Format with `cargo fmt`; run the gate above.
+- Update [CHANGELOG.md](CHANGELOG.md) (Keep-a-Changelog; pending section
+  `## [X.Y.Z] — Unreleased`, em dash; maintainer-only changes under
+  `### Internal`).
+- Propose a clear and descriptive commit message.

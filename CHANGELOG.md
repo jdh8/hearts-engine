@@ -80,6 +80,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A speaker button in the web UI header mutes the stings (keyboard `m`),
   remembered across sessions in `localStorage`.  The visual counterparts
   keep firing while muted.
+- Shooting the moon now has outcome-specific web feedback: the player gets a
+  short firework volley with colourful fireworks and confetti, while an
+  opponent gets a softened distant gunshot with a red-and-black impact burst.
+  The cue fires once when the showdown first appears, respects the existing
+  mute setting, keeps its visual channel while muted, and becomes a stationary
+  fade under reduced-motion preferences.
 - Offer to end a round early once all 26 points are captured.  The web UI
   shows an "End round" button and the terminal `play` example asks before the
   next human play, both jumping straight to the round result.  The leftover

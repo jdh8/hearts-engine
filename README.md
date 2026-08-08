@@ -149,3 +149,13 @@ domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
 [HMTSCCSound](https://freesound.org/people/HMTSCCSound/) was trimmed and faded
 for the Queen of Spades cue. The source is dedicated to the public domain under
 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+
+“[Whistle and Explosion Single_Firework](https://freesound.org/s/336008/)” by
+[Rudmer_Rotteveel](https://freesound.org/people/Rudmer_Rotteveel/) was shortened
+and faded for the player shooting-the-moon cue. The source is dedicated to the
+public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+
+“[Distant Gunshot](https://freesound.org/s/337240/)” by
+[adrilahan](https://freesound.org/people/adrilahan/) was shortened and faded for
+the opponent shooting-the-moon cue. The source is dedicated to the public
+domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
