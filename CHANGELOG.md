@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The web table shows a static gold arrow during passing that points from
+  the player toward West, North, or East, making the current pass direction
+  visible on the felt as well as in the instruction text.
 - `MonteCarloBot::pass_model` sets the `HeuristicConfig` the search models
   passing with, alongside `samples` and `gate`.  One knob names three roles
   that were each hard-coded to the shipped defaults: the passes the other

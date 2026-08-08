@@ -152,6 +152,39 @@ main {
   letter-spacing: 0.08em;
 }
 .pass-pot[hidden] { display: none; }
+.pass-direction {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.pass-direction[hidden] { display: none; }
+.pass-arrow {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  width: calc(var(--card-w) * 2.05);
+  height: 0.28rem;
+  border-radius: 999px;
+  background: var(--gold);
+  box-shadow: 0 0 0.42rem rgba(241, 203, 75, 0.58);
+  transform-origin: 0 50%;
+}
+.pass-arrow::after {
+  content: "";
+  position: absolute;
+  right: -0.12rem;
+  top: 50%;
+  width: 0.82rem;
+  height: 0.82rem;
+  border-top: 0.28rem solid var(--gold);
+  border-right: 0.28rem solid var(--gold);
+  transform: translateY(-50%) rotate(45deg);
+}
+.pass-direction[data-direction="left"] .pass-arrow { transform: rotate(-135deg); }
+.pass-direction[data-direction="across"] .pass-arrow { transform: rotate(-90deg); }
+.pass-direction[data-direction="right"] .pass-arrow { transform: rotate(-45deg); }
+.pass-direction + .pass-pot { z-index: 2; }
 .trick.passing .trick-slot { opacity: 0.2; }
 
 .you {

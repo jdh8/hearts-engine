@@ -19,6 +19,7 @@ const SUIT_ORDER = { C: 0, D: 1, H: 2, S: 3 };
 const RANKS = { 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9', 10: '10', 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
 const RANK_VALUES = { T: 10, J: 11, Q: 12, K: 13, A: 14 };
 const NAMES = ['You', 'West', 'North', 'East'];
+const PASS_RECIPIENTS = { left: 'West', across: 'North', right: 'East' };
 
 let game;
 let state; // snapshot currently on screen (the "before" state during a step)
@@ -364,6 +365,19 @@ function renderTrick(cards, winner, snapshot) {
   const passPot = id('pass-pot');
   passPot.hidden = snapshot.phase !== 'passing';
   id('trick').classList.toggle('passing', snapshot.phase === 'passing');
+
+  const passDirection = id('pass-direction');
+  const direction = snapshot.pass_direction.toLowerCase();
+  const recipient = PASS_RECIPIENTS[direction];
+  const showDirection = snapshot.phase === 'passing' && recipient != null;
+  passDirection.hidden = !showDirection;
+  if (showDirection) {
+    passDirection.dataset.direction = direction;
+    passDirection.setAttribute('aria-label', `Pass to ${recipient}`);
+  } else {
+    delete passDirection.dataset.direction;
+    passDirection.removeAttribute('aria-label');
+  }
 }
 
 function renderHand(snapshot) {
