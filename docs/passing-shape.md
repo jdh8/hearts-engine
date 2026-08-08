@@ -333,6 +333,24 @@ low escorts score bare rank.  Double voids are the strongest defensive
 shape (two slough channels) and the classic moon-support shape at once
 — the dual-use thesis in a single candidate.
 
+**Hazard — the spade refill is honor-biased.**  Two thirds of spade-void
+bets get a spade back (the amendment above), and it is disproportionately
+an honor: every giver's `pass_score` tops out on an unguarded
+Q♠/A♠/K♠, and a hand that just voided spades holds `guards = 0` by
+construction, so it cannot duck.  Two receipts are pathological — a bare
+A♠/K♠ is a catcher with no escort, which eats the very queen we shed, and
+the full ♠AKQ is a guaranteed 13, since any spade lead forces one of them
+and the queen's only masters are in our own hand.  That is why the void
+term excludes spades (`src/heuristic.rs:52`) and P2(a) must not change
+it: the emptying triple is offered to the *rollouts*, never to the
+policy.  The pricing is honest because a pass-phase world performs the
+real exchange (`src/mc.rs:314-327`) with the modeled givers' own greedy
+passes, so the disaster arrives in the worlds at the model's own
+honor-dumping rate — if anything an overestimate, the tier firing
+whenever a giver holds fewer than `spade_guards` low spades.  Expect the
+arm to be hand-selective (Q♠xx pays, A♠K♠x is refuted) rather than
+uniformly positive.
+
 **Coupling.**  None — pool only.
 
 **Latency.**  Worst case +3 candidates against the width-7 precedent
@@ -345,9 +363,10 @@ mechanism): 2,000-block screen, then a 6,195-block confirm at `mc:128`
 — the forced patch's own scale.  `rank` primary, `win` gate, `moons`
 watched: both additions should nudge attempts up.
 
-**Kill criterion.**  Joint `rank` under 2 SE at confirm reverts both;
-if it ships but latency exceeds +10%, ablate the pairs arm to
-attribute.
+**Kill criterion.**  Joint `rank` under 2 SE at confirm reverts both; on
+a *negative* joint arm ablate (a) first, the hazard above being the
+likeliest culprit.  If it ships but latency exceeds +10%, ablate the
+pairs arm to attribute.
 
 ### P3 — shape-aware shoot passes
 
@@ -472,8 +491,11 @@ counting.  So a void bet is discounted by a roughly constant factor
 schedule keeps its *shape* — the discount rescales it rather than
 bending it.  Spades are the exception and do track the null (0.6984 →
 0.6129), because the honor tier makes the giver's spade pass depend on
-its own spade length; P2's spade-void candidates should expect a
-genuinely lower refill risk as they empty the suit.
+its own spade length.  Read that curve in *dealt* `k`, though: a
+spade-void candidate empties from `k = 1..3`, so it faces 0.61–0.68 —
+the **highest** refill rate in the deck, not the lowest — and emptying
+the suit cannot lower it, because the giver never sees our hand.  P2's
+hazard note carries the consequence.
 
 **The tie-break is a live term, not a formality — and it is currently a
 bug-shaped accident.**  P1 above already requires the tie-break rule to

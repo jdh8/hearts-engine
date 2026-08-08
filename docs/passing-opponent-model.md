@@ -1,7 +1,7 @@
 # Opponent-aware passing — pricing what the other three seats pass
 
-**Status: IN PROGRESS (2026-08-08).**  P0 and P1 have shipped; P2 is
-built and under measurement.  P3 stays blocked behind the sibling doc,
+**Status: IN PROGRESS (2026-08-08).**  P0 and P1 have shipped; P2 and P4
+are closed as nulls.  P3 is unblocked and next here,
 P5 behind P3, P6 parked — see each section's own status line.  Sibling:
 [passing-shape.md](passing-shape.md) covers the void/shape axis; its P1
 rewrites the shared pass policy and lands before anything here that
