@@ -1,9 +1,11 @@
 # Opponent-aware passing — pricing what the other three seats pass
 
-**Status: PROPOSAL (2026-08-08).**  Design only — nothing below is
-implemented.  Sibling: [passing-shape.md](passing-shape.md) covers the
-void/shape axis; its P1 rewrites the shared pass policy and lands
-before anything here that touches `pass_score`.
+**Status: IN PROGRESS (2026-08-08).**  P0 and P1 have shipped; P2 is
+built and under measurement.  P3 stays blocked behind the sibling doc,
+P5 behind P3, P6 parked — see each section's own status line.  Sibling:
+[passing-shape.md](passing-shape.md) covers the void/shape axis; its P1
+rewrites the shared pass policy and lands before anything here that
+touches `pass_score`.
 
 ## Goal and non-goals
 
@@ -127,15 +129,15 @@ information whitelist forbids the evidence by construction.
 
 ## Proposals
 
-| # | Proposal | Roles touched | Class |
-| --- | --- | --- | --- |
-| P0 | name the model roles | none (plumbing) | enabler |
-| P1 | measure the incoming prior | none (offline) | measurement |
-| P2 | noisy opponent generator | worlds | cheap experiment |
-| P3 | prior-informed `pass_score` | all four | high ceiling |
-| P4 | settle the 0.75 constant | observation | measurement |
-| P5 | direction-conditioned config | self | speculative |
-| P6 | shooter-aware opponents | worlds | parked |
+| # | Proposal | Roles touched | Class | Status |
+| --- | --- | --- | --- | --- |
+| P0 | name the model roles | none (plumbing) | enabler | **shipped** |
+| P1 | measure the incoming prior | none (offline) | measurement | **measured** |
+| P2 | noisy opponent generator | worlds | cheap experiment | **null, reverted** |
+| P3 | prior-informed `pass_score` | all four | high ceiling | blocked on the sibling doc |
+| P4 | settle the 0.75 constant | observation | measurement | **stage one done; kept, closed** |
+| P5 | direction-conditioned config | self | speculative | needs P3 signal |
+| P6 | shooter-aware opponents | worlds | parked | parked |
 
 ### P0 — name the model roles
 
@@ -158,6 +160,24 @@ precedent for rollout refactors.
 
 **Kill criterion.**  None.  If every downstream sweep nulls, the knob
 is reverted with the last null and recorded under `### Internal`.
+
+**Status: SHIPPED (2026-08-08)** as `MonteCarloBot::pass_model`, one
+`HeuristicConfig` reaching all three sites.  Two details the design did
+not anticipate.  `MonteCarloBot::new` is `pub const fn` and
+`Default::default` is not callable in a `const fn`, so the change also
+added `HeuristicConfig::new`, mirroring `hearts::Rules`.  And the arena
+spec took named knobs — `mc:128,void=2,heart=1,guards=3` — rather than
+positional ones, because P2's ε is a float and a sweep wants to move one
+knob without restating the rest.
+
+The acceptance held: the 200-block arena CSV is byte-identical at the
+default.  But that check is *weaker than it looks* — it also passes if
+the knob is wired to nothing at all, since it only pins the default
+path.  Two things close that hole: a unit test that drives all three
+roles under a perturbed config, and the liveness A/B
+`--ab mc:64,void=0,heart=4`, which must move every column (it costs
+`win −2.1 SE`, `moons −3.2 SE` — the pre-retune policy, losing exactly
+as it should).
 
 ### P1 — measure the incoming-pass prior (offline)
 
@@ -189,6 +209,94 @@ the spade tier is a recorded no-build (see P3iii).
 **Kill criterion.**  It is measurement; the output table lands in this
 doc and feeds P2/P3.
 
+**Status: MEASURED (2026-08-08).**  Shipped as `tests/pass_prior.rs`, an
+`#[ignore]`d instrument over 10⁶ four-hand deals at seed `0x261`; every
+figure below carries a binomial standard error under 0.0005.  It drives
+the *shipped* policy through `HeuristicBot::pass_cards` rather than the
+`pub(crate)` `greedy_pass`, so it re-runs against whatever the policy
+becomes — which matters, because the sibling doc's P1 invalidates every
+number here.
+
+```console
+cargo test --release --test pass_prior -- --ignored --nocapture
+```
+
+The deal is all four hands, not a lone giver hand: our cards and the
+giver's are dependent, and the dependence moves the giver's *shape*, not
+just where the queen is — holding five spades drops the giver's expected
+spade count from 3.25 to 2.67, and that count gates the whole Q♠/A♠/K♠
+tier.  `P(giver holds)` is the harness's own self-check and reads
+0.3333 for all three honors.
+
+**Spade honors, conditioned on our hand lacking the card**
+
+| honor | P(giver holds) | P(we receive) | P(passes │ holds) |
+| --- | --- | --- | --- |
+| Q♠ | 0.3333 | **0.3235** | 0.9707 |
+| A♠ | 0.3333 | 0.3298 | 0.9896 |
+| K♠ | 0.3333 | 0.3266 | 0.9799 |
+
+**Received rank histogram** — A 0.2987, K 0.2587, Q 0.2141, J 0.0985,
+T 0.0594, 9 0.0346, and a tail under 0.02 apiece below that.
+
+**Expected received cards per suit** — ♣ 0.8188, ♠ 0.7624, ♦ 0.7447,
+♥ 0.6741 (uniform 0.75).
+
+**Refill curve**, P(≥ 1 received card of suit `s` │ we hold `k` of `s`):
+
+| k | ♣ | ♦ | ♥ | ♠ | uniform |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 0.6948 | 0.6399 | 0.5879 | 0.6984 | 0.7155 |
+| 1 | 0.6877 | 0.6363 | 0.5853 | 0.6719 | 0.6799 |
+| 2 | 0.6846 | 0.6341 | 0.5832 | 0.6480 | 0.6415 |
+| 3 | 0.6831 | 0.6367 | 0.5865 | 0.6129 | 0.6002 |
+
+**Received spades below the queen** — 0.0270 per pass, almost all of it
+J♠ (0.0204), then T♠ 0.0055, 9♠ 0.0010, and nothing at all below 7♠.
+
+#### What the run settled
+
+1. **Prediction 1 confirmed, and then some.**  P(receive Q♠ │ we lack
+   her) is 0.3235 — the model ships her whenever it holds her
+   (0.9707), so the arrival is essentially the 1/3 prior undiminished.
+   A♠ and K♠ are *higher* still.  Roughly one pass in three hands us a
+   spade honor, and the policy prices the keepers as if none were
+   coming.
+2. **Prediction 2 confirmed emphatically.**  A, K and Q alone are 77 %
+   of everything received; below the ten it is noise.
+3. **Prediction 3 confirmed — P3(iii) is a recorded no-build.**  At
+   0.0270 low spades per three-card pass there is no incoming guard
+   count to raise `spade_guards` by.  The J♠ soft spot was real (it is
+   three quarters of that number) and still negligible.
+4. **Prediction 4 resolved, in the direction nobody bet on.**  The
+   refill curve is *flat in k* for the non-spade suits, where the
+   uniform null falls 0.115 across k = 0..3.  So voiding a side suit
+   buys far less protection than the null suggests: at k = 3 the model
+   refills *more* than uniform (♣ 0.6831 vs 0.6002), at k = 0 *less*.
+   The reason is structural — the giver cannot see our hand, so its
+   policy cannot react to our shape, and the only k-dependence left is
+   card-counting.  **The sibling doc's void discount should therefore
+   attach as a near-constant factor, not a curve in k.**  Spades are
+   the exception and do track the null (0.6984 → 0.6129), because the
+   honor tier makes the giver's spade pass depend on its own length.
+
+#### The unpredicted finding: the suit spread is a tie-break artifact
+
+At the shipped default `heart_weight = 0`, `pass_score` is *exactly*
+symmetric under permuting ♣/♦/♥ — the base rank, the void bonus and the
+spade tier all ignore which side suit a card is in.  So the measured
+♣ 0.8188 / ♦ 0.7447 / ♥ 0.6741 spread cannot be policy; it can only come
+from the sort.  `greedy_pass` is `sort_by_key`, which is stable, and
+`Hand`'s iterator walks `Suit::ASC` = clubs, diamonds, hearts, spades —
+so every tie resolves clubs-first.  That positional bias is worth
+**0.145 cards per pass** between clubs and hearts, larger than most
+effects this campaign is hunting.
+
+It is unowned by either doc today.  The sibling doc's P1 already says
+its tie-break "must be explicit and pinned by a test"; this measurement
+says the tie-break is not a formality but a live term, and that whatever
+rule replaces it should be chosen deliberately rather than inherited.
+
 ### P2 — a noisy opponent generator
 
 **Mechanism.**  In the pass branch of `sample_world`
@@ -216,6 +324,36 @@ baseline.
 
 **Kill criterion.**  No arm clears +2 SE `rank` at confirm, or the
 latency budget blows — revert, record the null under `### Internal`.
+
+**Status: MEASURED NULL, REVERTED (2026-08-08).**  Built exactly as
+specified — `pass_ranking` widened to four cards, a `MonteCarloBot::noise`
+builder, an `arena` knob, and a `noise > 0.0` short-circuit so that ε = 0
+draws no randomness at all and the byte-identical CSV survived.  The knob
+was live (`noise=1.0` moves every column) and it bought nothing.
+
+| arm | seed 1, 2,000 blocks | seed 2, 6,000 blocks |
+| --- | --- | --- |
+| ε = 0.10 | `rank −0.0037 ± 0.0079` | — |
+| ε = 0.25 | `rank −0.0046 ± 0.0080` | `rank −0.0003 ± 0.0046` |
+| ε = 0.50 | `rank +0.0004 ± 0.0077` | `rank +0.0016 ± 0.0045` |
+
+No arm approaches the +2 SE bar; at the larger seed-2 sample every
+column is flat to a few tenths of an SE.  Seed 1's uniformly negative
+`points` (−1.0 to −1.4 SE across all three arms) did **not** reproduce
+on seed 2 (+0.1 SE) — one more instance of the correlated-deal noise
+this doc already warns about, and the reason the second seed was run
+before killing rather than after.  The one directionally consistent
+column is `moons`, down 0.4–1.8 SE everywhere, i.e. the noise slightly
+discourages shooting; also unresolved.
+
+Why it is a null is worth keeping: ranks 3 and 4 of `pass_score` are
+usually near-neighbors, so swapping them perturbs the sampled world very
+little, while the extra variance is exactly what the 1.5-SE paired gate
+is built to absorb.  A generator that widened the distribution where it
+matters would have to move the *first* two ranks — which is no longer a
+noise model but a different opponent model.
+
+Reverted in full; `greedy_pass` is back to its one-sort form.
 
 ### P3 — prior-informed `pass_score`
 
@@ -284,6 +422,40 @@ and it runs on an untuned constant.
 **Kill criterion.**  Still unresolved at 10,000 — keep it shipped (it
 is cheap), record the spend, and stop.
 
+**Status: STAGE ONE MEASURED, STILL UNRESOLVED — KEPT, AND CLOSED
+(2026-08-08).**  16,000 paired duplicate blocks at `mc:128`, 8,000 on
+each of two seeds, as a cross-build pairing: the disabled arm is
+`pass_observation_likelihood` returning `1.0`, which leaves the
+`self.rng.random::<f64>()` draw in place, so the two builds consume the
+identical random stream and differ *only* in whether a world is ever
+rejected.  That is a tighter pairing than the arena's own `--ab`.
+
+| column | seed 1 | seed 2 | pooled |
+| --- | --- | --- | --- |
+| `points` | `−0.0115 ± 0.0272` | `+0.0153 ± 0.0273` | `+0.0019 ± 0.0193` (+0.1 SE) |
+| `win` | `+0.0006 ± 0.0013` | `+0.0017 ± 0.0013` | `+0.0011 ± 0.0009` (+1.3 SE) |
+| `not-last` | `−0.0009 ± 0.0010` | `−0.0006 ± 0.0010` | `−0.0008 ± 0.0007` (−1.1 SE) |
+| `rank` | `−0.0009 ± 0.0029` | `+0.0027 ± 0.0029` | `+0.0009 ± 0.0021` (+0.4 SE) |
+
+The verdict is the kill criterion's: unresolved at eight times the
+original sample, so the model stays shipped — it is nearly free — and
+the question closes.
+
+The number worth carrying forward is that the original 2,000-deal
+estimate was **optimistic by roughly four times**.  It read
+`win +0.0042 ± 0.0026` and `rank +0.0046 ± 0.0058`; at 16,000 blocks the
+same quantities are `+0.0011` and `+0.0009`.  Both original figures sat
+inside their own error bars, so nothing was mis-stated at the time — but
+anyone tempted to size a future pass-inference effect off that entry
+should size it off this one instead.  Sign is still positive on the ship
+gate and that is all that can be said.
+
+**Stage two is therefore dropped, not deferred.**  Sweeping the fiat
+0.75 over {0.6, 0.9} tunes a constant inside an effect that cannot be
+resolved at 16,000 blocks; the sweep would need an order of magnitude
+more games than the effect is worth.  Revive only if the model is ever
+made to carry more weight than one soft rejection per sampled world.
+
 ### P5 — direction-conditioned passing
 
 **Mechanism.**  A per-direction `HeuristicConfig` override selected in
@@ -326,6 +498,22 @@ stage-one float was correlated-deal noise) → the P3 pool bridge before
 any `greedy_pass` default change → P4 stage one whenever CPU is idle,
 stage two after P0 → P5 only on P3 signal → P6 only against a field
 that shoots.
+
+**What is left, as of 2026-08-08.**  P0, P1, P2 and P4 are all closed —
+one shipped, one measured, two nulls.  Everything remaining in this doc
+is gated on work that belongs to the sibling: **P3 is next, and it
+cannot start until `passing-shape.md`'s P1 lands**, because that rewrite
+re-baselines the incumbent every P3 arena leg would be measured against.
+P5 waits on a P3 signal, P6 on an opponent pool that shoots.  So the
+next move in this campaign is not in this document.
+
+P1's table changed two of P3's sub-parts before they were built.  P3(iii)
+is dead on arrival — measured incoming below-queen spades are 0.0270 per
+pass, so there is no guard count to add.  And P3's refill discount, which
+the sibling doc expects to compose multiplicatively with its void term,
+should be a **near-constant factor rather than a curve in `k`**: the
+measured refill curve is flat in how many cards of the suit we hold,
+because the giver cannot see our hand.  Spades are the exception.
 
 ## Interactions with the shape doc
 

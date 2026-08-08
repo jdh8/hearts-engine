@@ -191,14 +191,26 @@ pub struct HeuristicConfig {
     pub spade_guards: u8,
 }
 
-impl Default for HeuristicConfig {
-    fn default() -> Self {
+impl HeuristicConfig {
+    /// The shipped tuning, in a `const` context
+    ///
+    /// [`Default`] delegates here, as [`hearts::Rules`] does: a `const fn`
+    /// constructor — [`MonteCarloBot::new`](crate::MonteCarloBot::new) —
+    /// cannot call a trait method.
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             moon_defense: 8,
             void_weight: 1,
             heart_weight: 0,
             spade_guards: 5,
         }
+    }
+}
+
+impl Default for HeuristicConfig {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

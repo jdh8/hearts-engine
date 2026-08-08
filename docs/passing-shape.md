@@ -332,6 +332,48 @@ doc comment — same knob, new unit, re-tuned by the re-sweep.
 - This doc owns the deterministic tie-break rule (P1); the sibling's
   observation model inherits whatever is pinned here.
 
+### Measured, 2026-08-08 — two results this doc must absorb
+
+The sibling's P0 shipped (`MonteCarloBot::pass_model`, so `mc:` specs now
+carry pass knobs) and its P1 ran.  Two of its numbers land directly on
+proposals here.
+
+**The refill discount is a constant, not a curve.**  Measured
+`P(≥ 1 received card of suit s | we hold k of s)` over 10⁶ deals is
+*flat* in `k` for the side suits — clubs 0.6948 → 0.6831 across
+k = 0..3, diamonds 0.640 → 0.637, hearts 0.588 → 0.587 — where the
+uniform null falls 0.7155 → 0.6002.  The reason is structural and worth
+stating plainly: **the giver cannot see our hand**, so no policy it runs
+can react to our shape, and the only `k`-dependence available is card
+counting.  So a void bet is discounted by a roughly constant factor
+(~0.59 in hearts, ~0.68 in clubs), and P1's escalating +4/+6 completion
+schedule keeps its *shape* — the discount rescales it rather than
+bending it.  Spades are the exception and do track the null (0.6984 →
+0.6129), because the honor tier makes the giver's spade pass depend on
+its own spade length; P2's spade-void candidates should expect a
+genuinely lower refill risk as they empty the suit.
+
+**The tie-break is a live term, not a formality — and it is currently a
+bug-shaped accident.**  P1 above already requires the tie-break rule to
+be "explicit and pinned by a test".  The measurement upgrades that from
+hygiene to a defect worth fixing: at the shipped `heart_weight = 0`,
+`pass_score` is *exactly* symmetric under permuting ♣/♦/♥ — nothing in
+the base rank, the void bonus or the spade tier distinguishes side suits
+— yet the measured mean cards passed per suit are ♣ 0.8188, ♦ 0.7447,
+♥ 0.6741.  That entire 0.145-card spread is `sort_by_key`'s stability
+resolving ties in `Suit::ASC` order, clubs first.  The policy has a club
+bias nobody designed and nobody has measured the cost of.
+
+That makes P1's rewrite the natural place to fix it, and gives the
+rewrite a second, independent reason to exist beyond set-awareness.  The
+sequential form re-sorts three times, so it will *redistribute* this bias
+rather than remove it; the replacement rule should therefore be chosen on
+purpose.  The obvious candidates — break ties toward the shorter suit
+(which serves the void thesis directly) or toward the suit with fewer
+kept honors — are cheap, and either is defensible where "clubs first" is
+not.  A/B them against the current order as part of P1's own arena leg,
+not as a follow-up.
+
 ## Appendix — measurement boilerplate
 
 The house discipline, from the README and CHANGELOG practice:

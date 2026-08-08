@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `MonteCarloBot::pass_model` sets the `HeuristicConfig` the search models
+  passing with, alongside `samples` and `gate`.  One knob names three roles
+  that were each hard-coded to the shipped defaults: the passes the other
+  three seats submit in a sampled pass-phase world, the soft likelihood
+  that reweights worlds against the pass we actually received, and the
+  ranking that orders the candidate triples — including candidate 0, the
+  greedy incumbent a challenger must clear the significance gate to
+  displace, so the setting moves decisions even where the candidate set
+  does not.  A bot configured away from the defaults now ranks, models and
+  observes with its own pass policy instead of the shipped one; an
+  unconfigured bot decides exactly as before, and the 200-block arena CSV
+  is byte-identical across the change.  Play-side knobs are deliberately
+  out of reach: `moon_defense` belongs to the live overlay and the rollout
+  policy, not to passing.  The arena's `mc` spec carries the same knobs as
+  `mc:128,void=2,heart=1,guards=3`, named rather than positional because
+  they are a mixed bag and a sweep wants to move one without restating the
+  rest; bare `mc:128` keeps its meaning.  Only the leading component may be
+  a bare sample count — `mc:128,64` is rejected rather than quietly running
+  at 64 worlds, because a spec typo that still parses invalidates whatever
+  measurement it was typed for.
+- `HeuristicConfig::new`, the shipped defaults in a `const` context, with
+  `Default` delegating to it as `hearts::Rules` does.
 - `HeuristicConfig` exposes the pass policy's two remaining hand-set
   constants: `heart_weight`, the extra pass-score weight per rank for
   hearts, and `spade_guards`, the low-spade count above which the
@@ -221,6 +243,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Measure the incoming-pass prior — what the shipped greedy pass actually
+  sends the seat downstream of it — with a new `#[ignore]`d instrument,
+  `tests/pass_prior.rs`, over 10⁶ four-hand deals
+  (`cargo test --release --test pass_prior -- --ignored --nocapture`; the
+  `--nocapture` is load-bearing, since libtest swallows a passing test's
+  stdout and the table is the result).  It deals all four hands rather
+  than a lone giver hand, because our cards and the giver's are dependent
+  in a way that moves the giver's *shape*, not just where the queen is;
+  `P(giver holds the honor)` reads 0.3333 as its own self-check.  Three
+  of the four recorded predictions confirmed: we receive Q♠ on 0.3235 of
+  the hands where we lack her (the policy ships her on 0.9707 of the
+  hands where it holds her, so the arrival is essentially the 1/3 prior
+  undiminished, and A♠ and K♠ are higher still); A, K and Q are 77 % of
+  everything received; and below-queen spades arrive 0.0270 times per
+  pass, which retires the "expected incoming guards" adjustment to the
+  spade tier as a no-build.  The fourth resolved against the guess: the
+  refill curve is *flat* in how many cards of the suit we hold, where the
+  uniform null falls 0.115 across zero to three, so voiding a side suit
+  buys much less protection than the null suggests — the giver cannot see
+  our hand, so its policy cannot react to our shape.  Unpredicted, and
+  the largest single finding: at the shipped `heart_weight = 0`,
+  `pass_score` is exactly symmetric across ♣/♦/♥, yet the measured
+  per-suit means are ♣ 0.8188, ♦ 0.7447, ♥ 0.6741.  That spread can only
+  be the stable sort resolving ties in `Suit::ASC` order, so the pass
+  policy carries a 0.145-cards-per-pass club bias that nobody chose.
+- Keep the Monte Carlo world generator's opponents deterministic after
+  testing a noisy one.  Modeled opponents pass their greedy triple with
+  certainty, which hands over an unguarded Q♠ every time a world is
+  sampled, while the play-time observation model concedes the opposite at
+  a quarter of the weight per miss; the experiment gave each modeled
+  opponent probability ε of swapping the third-ranked card of its pass
+  for the fourth.  The knob was live and bought nothing: over 2,000
+  paired duplicate blocks, matchpoint rank moves `−0.0037 ± 0.0079`,
+  `−0.0046 ± 0.0080` and `+0.0004 ± 0.0077` at ε of 0.1, 0.25 and 0.5,
+  and a 6,000-block confirm on a second seed leaves every column flat
+  (`rank −0.0003 ± 0.0046` and `+0.0016 ± 0.0045`).  The first seed's
+  uniformly negative points margin did not reproduce on the second — the
+  correlated-deal noise this project has been caught by before, and the
+  reason the second seed ran before the revert rather than after.  Ranks
+  three and four of the pass score are usually near-neighbours, so the
+  swap perturbs a sampled world barely at all while adding exactly the
+  variance the significance gate exists to absorb.  Reverted; nothing
+  ships.
+- Close the soft pass-inference question.  The reweight shipped on a
+  favourable but unresolved 2,000-deal result, so it was rerun over
+  16,000 paired duplicate blocks at `mc:128`, 8,000 on each of two seeds,
+  as a cross-build pairing in which the disabled arm still draws its
+  uniform and only ever accepts — so the two builds consume the identical
+  random stream and differ solely in whether a world is rejected.  It is
+  still unresolved: pooled `win +0.0011 ± 0.0009`, `rank +0.0009 ±
+  0.0021`, `points +0.0019 ± 0.0193`.  The model is nearly free and stays
+  shipped, but the original estimate was optimistic by about four times
+  (`win +0.0042`, `rank +0.0046`), so it is the figures here that should
+  size any future pass-inference work.  The planned sweep of the fiat
+  0.75 miss factor is dropped rather than deferred: tuning a constant
+  inside an effect that will not resolve at 16,000 blocks needs an order
+  of magnitude more games than the effect is worth.
 - Open `docs/` with two passing design proposals:
   `docs/passing-opponent-model.md` (configurable pass models, an offline
   incoming-card prior, world-generator noise) and `docs/passing-shape.md`

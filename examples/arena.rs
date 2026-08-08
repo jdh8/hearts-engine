@@ -62,8 +62,10 @@ struct Config {
 fn usage() {
     println!(
         "Usage: arena [--blocks N | --games N] [--seed N] [--ab SPEC] [--csv] [BOT BOT BOT BOT]\n\
-         BOT is greedy[:V,H,G], newbie or mc[:samples]; defaults are four greedy bots.\n\
+         BOT is greedy[:V,H,G], newbie or mc[:samples[,knob=value...]].\n\
          greedy:V,H,G sets the pass knobs void_weight,heart_weight,spade_guards.\n\
+         mc knobs void/heart/guards set the pass model the search ranks,\n\
+         samples its rollout opponents, and reads the incoming pass with.\n\
          N counts blocks, each one deal (or game seed) played four times rotated.\n\
          --ab reruns the same blocks with SPEC in slot 1 and reports the paired delta.\n\
          --csv writes one row per block per bot instead of the summary."
@@ -150,14 +152,50 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
             Ok(Box::new(HeuristicBot::with_config(heuristic)))
         }
         "mc" => {
-            let samples = suffix.map(str::parse::<u32>).transpose()?;
+            // mc:SAMPLES[,knob=value...] — the bare count keeps its old
+            // meaning; named knobs configure the pass model the search
+            // ranks, samples opponents and reads the incoming pass with.
+            // Named rather than positional because a sweep wants to move
+            // one knob without restating the rest, and because the set is
+            // open — the sample count is a `u32` beside `u8` pass weights.
+            let mut samples = 32;
+            // `HeuristicConfig` is non-exhaustive, so start from Default.
+            let mut pass = HeuristicConfig::default();
+            for (index, knob) in suffix
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|knob| !knob.is_empty())
+                .enumerate()
+            {
+                match knob.split_once('=') {
+                    // Only the leading component may be bare.  A second one
+                    // would silently reset the width — `mc:128,64` quietly
+                    // running 64 worlds invalidates the measurement it was
+                    // typed for, so it is an error, not a last-one-wins.
+                    None if index == 0 => samples = knob.parse()?,
+                    None => bail!(
+                        "mc takes one sample count, then named knobs; got a bare {knob:?} in {spec:?}"
+                    ),
+                    Some(("void", value)) => pass.void_weight = value.parse()?,
+                    Some(("heart", value)) => pass.heart_weight = value.parse()?,
+                    Some(("guards", value)) => pass.spade_guards = value.parse()?,
+                    Some((key, _)) => {
+                        bail!("unknown mc knob {key:?} in {spec:?} (void/heart/guards)")
+                    }
+                }
+            }
             let seed = deal_seed ^ (slot as u64 + 1).wrapping_mul(STRIDE);
             Ok(Box::new(
-                MonteCarloBot::new(StdRng::seed_from_u64(seed)).samples(samples.unwrap_or(32)),
+                MonteCarloBot::new(StdRng::seed_from_u64(seed))
+                    .samples(samples)
+                    .pass_model(pass),
             ))
         }
         "newbie" => bail!("newbie does not take a suffix"),
-        other => bail!("unknown bot {other:?} (greedy[:V,H,G] | newbie | mc[:samples])"),
+        other => {
+            bail!("unknown bot {other:?} (greedy[:V,H,G] | newbie | mc[:samples[,knob=value]])")
+        }
     }
 }
 

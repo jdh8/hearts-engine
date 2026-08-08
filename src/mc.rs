@@ -120,6 +120,10 @@ pub struct MonteCarloBot<R: Rng> {
     /// How many paired standard errors a challenger must clear in
     /// [`beats`] before the bot deviates from the greedy incumbent.
     gate: f64,
+    /// The pass policy the search models with, in all three of its roles:
+    /// the rollout opponents' passes, the observation reweight, and the
+    /// bot's own candidate ranking.
+    pass_model: HeuristicConfig,
     /// Whether a moon attempt is under way, carried across the tricks of
     /// one round so the search does not re-litigate it every turn.
     shooting: bool,
@@ -163,6 +167,7 @@ impl<R: Rng> MonteCarloBot<R> {
             rng,
             samples: 128,
             gate: 1.5,
+            pass_model: HeuristicConfig::new(),
             shooting: false,
         }
     }
@@ -190,6 +195,26 @@ impl<R: Rng> MonteCarloBot<R> {
     #[must_use]
     pub const fn gate(mut self, gate: f64) -> Self {
         self.gate = gate;
+        self
+    }
+
+    /// Set the pass policy the search models with
+    ///
+    /// One config serves all three of the search's pass-model roles at
+    /// once: the passes the three rollout opponents submit in a sampled
+    /// world, the policy the observation reweight re-passes a plausible
+    /// giver holding with, and the ranking that orders the bot's own pass
+    /// candidates — whose first triple is the incumbent challengers must
+    /// beat by [`gate`](Self::gate) standard errors.  The default is
+    /// [`HeuristicConfig::new`], so a bot tuned away from the shipped
+    /// knobs must be told, or it models the shipped policy instead of its
+    /// own.
+    ///
+    /// Play-side knobs are not read: `moon_defense` belongs to the live
+    /// overlay and the rollout policy, not to passing.
+    #[must_use]
+    pub const fn pass_model(mut self, config: HeuristicConfig) -> Self {
+        self.pass_model = config;
         self
     }
 
@@ -273,7 +298,8 @@ impl<R: Rng> MonteCarloBot<R> {
                     plausible.insert(card);
                 }
             }
-            if self.rng.random::<f64>() > pass_observation_likelihood(plausible, received) {
+            let likelihood = pass_observation_likelihood(plausible, received, self.pass_model);
+            if self.rng.random::<f64>() > likelihood {
                 return None;
             }
         }
@@ -294,7 +320,7 @@ impl<R: Rng> MonteCarloBot<R> {
             let mut round = Round::from_deal(*view.rules(), view.direction(), hands).ok()?;
             for seat in Seat::ALL {
                 if seat != me {
-                    let pass: Hand = greedy_pass(hands[seat as usize], HeuristicConfig::default())
+                    let pass: Hand = greedy_pass(hands[seat as usize], self.pass_model)
                         .into_iter()
                         .collect();
                     round.pass(seat, pass).ok()?;
@@ -337,9 +363,9 @@ impl<R: Rng> MonteCarloBot<R> {
 
     /// The ordered candidate moves for the current decision, the greedy
     /// incumbent first; empty when the seat has no real choice
-    fn candidates(view: &View<'_>) -> Vec<Candidate> {
+    fn candidates(&self, view: &View<'_>) -> Vec<Candidate> {
         match view.phase() {
-            Phase::Passing => pass_candidates(view),
+            Phase::Passing => pass_candidates(view, self.pass_model),
             Phase::Playing => play_candidates(view),
             Phase::Finished => Vec::new(),
         }
@@ -393,7 +419,7 @@ impl<R: Rng> MonteCarloBot<R> {
     /// sampled for (e.g. a seat mid-pass).
     #[must_use]
     pub fn assess(&mut self, view: &View<'_>) -> Vec<Assessment> {
-        let candidates = Self::candidates(view);
+        let candidates = self.candidates(view);
         if candidates.is_empty() {
             return Vec::new();
         }
@@ -451,10 +477,8 @@ impl<R: Rng> MonteCarloBot<R> {
 /// cards, so score the known pass against that deliberately over-broad
 /// plausible pre-pass holding.  Every mismatch costs only a quarter of the
 /// weight; an opponent need not share our pass policy.
-fn pass_observation_likelihood(plausible: Hand, received: Hand) -> f64 {
-    let modeled: Hand = greedy_pass(plausible, HeuristicConfig::default())
-        .into_iter()
-        .collect();
+fn pass_observation_likelihood(plausible: Hand, received: Hand, config: HeuristicConfig) -> f64 {
+    let modeled: Hand = greedy_pass(plausible, config).into_iter().collect();
     let misses = 3 - (modeled & received).len() as i32;
     0.75f64.powi(misses)
 }
@@ -462,10 +486,10 @@ fn pass_observation_likelihood(plausible: Hand, received: Hand) -> f64 {
 /// The candidate passes: all triples of the [`PASS_POOL`] highest-scoring
 /// cards, the greedy triple first; passes that empty a short side suit; plus
 /// the one moon pass
-fn pass_candidates(view: &View<'_>) -> Vec<Candidate> {
+fn pass_candidates(view: &View<'_>, config: HeuristicConfig) -> Vec<Candidate> {
     let hand = view.hand();
     let mut ranked: Vec<Card> = hand.into_iter().collect();
-    ranked.sort_by_key(|&card| -pass_score(hand, card, HeuristicConfig::default()));
+    ranked.sort_by_key(|&card| -pass_score(hand, card, config));
 
     // The mirror of the greedy triple: the three cards the pass policy least
     // wants gone are low cards of long suits, which is exactly the ballast a
@@ -816,7 +840,7 @@ fn equity(scores: &[u16; 4], me: Seat, standing: [u16; 4], rules: &Rules) -> f64
 
 impl<R: Rng> Strategy for MonteCarloBot<R> {
     fn pass_cards(&mut self, view: &View<'_>) -> [Card; 3] {
-        let candidates = MonteCarloBot::<R>::candidates(view);
+        let candidates = self.candidates(view);
         match self.choose(view, &candidates) {
             Choice::Pass(cards) => cards,
             Choice::Play(_) => unreachable!("the passing phase yields pass choices"),
@@ -858,7 +882,7 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
             return shoot_play(legal, trick, view.played());
         }
 
-        let candidates = MonteCarloBot::<R>::candidates(view);
+        let candidates = self.candidates(view);
         if candidates.len() < 2 {
             // Every legal card collapsed into one equivalence class.
             return greedy_play(legal, trick, view.played());
@@ -944,8 +968,79 @@ mod tests {
             .into_iter()
             .collect();
         let quiet = hand("234...");
-        assert_eq!(pass_observation_likelihood(plausible, modeled), 1.0);
-        assert!(pass_observation_likelihood(plausible, quiet) < 1.0);
+        let default = HeuristicConfig::default();
+        assert_eq!(
+            pass_observation_likelihood(plausible, modeled, default),
+            1.0
+        );
+        assert!(pass_observation_likelihood(plausible, quiet, default) < 1.0);
+    }
+
+    #[test]
+    fn the_pass_model_reaches_every_role() {
+        // The knob is worthless if it stops at the struct, and the
+        // byte-identical arena CSV cannot tell a wired knob from an unwired
+        // one — it only pins the default path.  So exercise all three roles
+        // through the bot, with a config that re-sorts almost any hand.
+        let wild = HeuristicConfig {
+            heart_weight: 9,
+            ..HeuristicConfig::default()
+        };
+        let bot = |config| MonteCarloBot::new(StdRng::seed_from_u64(4)).pass_model(config);
+
+        let mut deal = StdRng::seed_from_u64(5);
+        let mut table = Table::deal(Rules::new(), PassDirection::Left, &mut deal);
+        let me = table.turn().expect("passing starts at North");
+
+        // Ranking (and so candidate 0, the incumbent): a pure function of
+        // the view and the config, no rollouts.
+        let labels = |config| {
+            bot(config)
+                .candidates(&table.view(me))
+                .into_iter()
+                .map(|candidate| candidate.label)
+                .collect::<Vec<String>>()
+        };
+        assert_ne!(labels(HeuristicConfig::default()), labels(wild));
+
+        // The rollout population: at `Phase::Passing` nothing is observed,
+        // so both configs draw the identical hands from the identical seed
+        // and the modeled pass is the only thing that can differ.
+        let population = |config| {
+            bot(config)
+                .sample_worlds(&table.view(me), 1)
+                .first()
+                .expect("a pass-phase world samples")
+                .passed(me.left())
+        };
+        assert_ne!(
+            population(HeuristicConfig::default()),
+            population(wild),
+            "the modeled opponents ignored the pass model"
+        );
+
+        // The observation model, once the exchange resolves.  Both configs
+        // consume the same RNG prefix and exactly one uniform per attempt,
+        // so they differ only in the `0.75^misses` threshold they compare
+        // against — and so in how many samples they reject.
+        for _ in 0..4 {
+            table
+                .step(&mut HeuristicBot::new())
+                .expect("greedy passes are legal");
+        }
+        let view = table.view(me);
+        assert!(view.received().is_some(), "the observation model is live");
+        let rejects = |config| {
+            let mut bot = bot(config);
+            (0..64)
+                .filter(|_| bot.sample_hands(&view).is_none())
+                .count()
+        };
+        assert_ne!(
+            rejects(HeuristicConfig::default()),
+            rejects(wild),
+            "the observation model ignored the pass model"
+        );
     }
 
     #[test]
@@ -1336,7 +1431,7 @@ mod tests {
         let table = Table::deal(Rules::new(), PassDirection::Left, &mut rng);
         let me = table.turn().expect("passing starts at North");
         let view = table.view(me);
-        let cands = pass_candidates(&view);
+        let cands = pass_candidates(&view, HeuristicConfig::default());
         assert!(cands.iter().filter(|c| !c.shoot).count() >= 20);
         assert_eq!(cands.iter().filter(|c| c.shoot).count(), 1, "the moon pass");
 
@@ -1366,7 +1461,7 @@ mod tests {
         let table = Table::new(round);
         let void = hand("234...");
         assert!(
-            pass_candidates(&table.view(Seat::North))
+            pass_candidates(&table.view(Seat::North), HeuristicConfig::default())
                 .iter()
                 .any(|candidate| matches!(candidate.choice, Choice::Pass(cards)
                 if cards.into_iter().collect::<Hand>() == void))

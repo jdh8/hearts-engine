@@ -45,11 +45,17 @@ what they removed:
   rank-adjacency, passes = all 20 triples of the top-6 `pass_score`
   cards plus short-suit voids), common-random-number batches with gated
   challenger elimination, `assess()`.  `Assessment::ev` is expected round
-  points — LOWER is better, unlike gin's signed gain.
+  points — LOWER is better, unlike gin's signed gain.  The three places
+  the search models *passing* — the rollout opponents' passes, that soft
+  weight, and the candidate ranking (whose first triple is the incumbent)
+  — all read one `pass_model()` `HeuristicConfig`, defaulting to the
+  shipped one; play-side knobs stay out of it.
 - `tests/` — `view` (hygiene, void soundness, unseen identity, score
   rotation), `driver` (cheater rejection + retry, whole games),
   `proptest` (seeded termination + point conservation), `strength`
-  (`#[ignore]`d mc-vs-greedy tripwire).
+  (`#[ignore]`d mc-vs-greedy tripwire), `pass_prior` (`#[ignore]`d
+  offline measurement of what the greedy pass sends downstream; needs
+  `--nocapture`, since the printed table is the result).
 - `examples/` — `play` (terminal, human = South), `arena`, `tune`.
   `arena` is the measurement instrument: its unit is a **block** (one
   deal, or one game seed, played four times with the lineup rotated so
