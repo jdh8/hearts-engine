@@ -62,10 +62,12 @@ struct Config {
 fn usage() {
     println!(
         "Usage: arena [--blocks N | --games N] [--seed N] [--ab SPEC] [--csv] [BOT BOT BOT BOT]\n\
-         BOT is greedy[:V,H,G], newbie or mc[:samples[,knob=value...]].\n\
-         greedy:V,H,G sets the pass knobs void_weight,heart_weight,spade_guards.\n\
-         mc knobs void/heart/guards set the pass model the search ranks,\n\
-         samples its rollout opponents, and reads the incoming pass with.\n\
+         BOT is greedy[:V,H,G[,knob=value...]], newbie or mc[:samples[,knob=value...]].\n\
+         greedy:V,H,G sets void_weight,heart_weight,spade_guards positionally;\n\
+         both specs then take named pass knobs void/heart/guards/two,\n\
+         two being the flat bonus for passing the forced 2♣ lead.\n\
+         mc's knobs set the pass model the search ranks, samples its rollout\n\
+         opponents, and reads the incoming pass with.\n\
          N counts blocks, each one deal (or game seed) played four times rotated.\n\
          --ab reruns the same blocks with SPEC in slot 1 and reports the paired delta.\n\
          --csv writes one row per block per bot instead of the summary."
@@ -118,6 +120,26 @@ fn parse_args() -> Result<Option<Config>> {
 
 /// Build one bot, seeded so its search noise is a function of the deal and
 /// its slot alone — never of the deal stream or of who else is at the table.
+/// The named pass knobs both bot specs accept, for their error messages.
+const PASS_KNOBS: &str = "void/heart/guards/two";
+
+/// Apply one `knob=value` pass setting, or report the key as unknown so the
+/// caller can name its own spec in the error
+///
+/// Shared by the `greedy` and `mc` specs: they configure the same
+/// [`HeuristicConfig`], and a knob that reached only one of them would make
+/// the two legs of a pass campaign measure different things.
+fn pass_knob(config: &mut HeuristicConfig, key: &str, value: &str) -> Result<bool> {
+    match key {
+        "void" => config.void_weight = value.parse()?,
+        "heart" => config.heart_weight = value.parse()?,
+        "guards" => config.spade_guards = value.parse()?,
+        "two" => config.two_of_clubs_bonus = value.parse()?,
+        _ => return Ok(false),
+    }
+    Ok(true)
+}
+
 fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>> {
     let (kind, suffix) = match spec.split_once(':') {
         Some((kind, suffix)) => (kind, Some(suffix)),
@@ -128,19 +150,50 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
             let Some(suffix) = suffix else {
                 return Ok(Box::new(HeuristicBot::new()));
             };
-            // greedy:V,H,G — the pass knobs; moon defense stays default.
-            let knobs: Vec<u8> = suffix
-                .split(',')
-                .map(|knob| knob.trim().parse().map_err(anyhow::Error::from))
-                .collect::<Result<_>>()?;
-            let &[void_weight, heart_weight, spade_guards] = knobs.as_slice() else {
-                bail!("greedy takes three knobs V,H,G (void,heart,guards), got {spec:?}");
-            };
+            // greedy:V,H,G[,knob=value...] — the positional triple keeps its
+            // meaning, because every recorded invocation types it that way;
+            // knobs added since are named, as `mc:` already takes them.  Two
+            // rules keep a typo from parsing into a different measurement: a
+            // bare component after a named one would silently re-set a knob
+            // the spec already spelled out, and a partial triple would take
+            // the shipped default for whichever knob it left off.
             // `HeuristicConfig` is non-exhaustive, so start from Default.
             let mut heuristic = HeuristicConfig::default();
-            heuristic.void_weight = void_weight;
-            heuristic.heart_weight = heart_weight;
-            heuristic.spade_guards = spade_guards;
+            let mut positional = 0;
+            let mut named = false;
+            for knob in suffix
+                .split(',')
+                .map(str::trim)
+                .filter(|knob| !knob.is_empty())
+            {
+                match knob.split_once('=') {
+                    None if named => bail!(
+                        "greedy takes V,H,G before any named knob; got a bare {knob:?} in {spec:?}"
+                    ),
+                    None => {
+                        let value = knob.parse()?;
+                        match positional {
+                            0 => heuristic.void_weight = value,
+                            1 => heuristic.heart_weight = value,
+                            2 => heuristic.spade_guards = value,
+                            _ => bail!("greedy takes three positional knobs V,H,G, got {spec:?}"),
+                        }
+                        positional += 1;
+                    }
+                    Some((key, value)) => {
+                        named = true;
+                        if !pass_knob(&mut heuristic, key, value)? {
+                            bail!("unknown greedy knob {key:?} in {spec:?} ({PASS_KNOBS})");
+                        }
+                    }
+                }
+            }
+            if positional != 0 && positional != 3 {
+                bail!(
+                    "greedy takes its positional knobs as the whole triple V,H,G \
+                     (void,heart,guards), got {spec:?}"
+                );
+            }
             Ok(Box::new(HeuristicBot::with_config(heuristic)))
         }
         "newbie" if suffix.is_none() => {
@@ -177,11 +230,10 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
                     None => bail!(
                         "mc takes one sample count, then named knobs; got a bare {knob:?} in {spec:?}"
                     ),
-                    Some(("void", value)) => pass.void_weight = value.parse()?,
-                    Some(("heart", value)) => pass.heart_weight = value.parse()?,
-                    Some(("guards", value)) => pass.spade_guards = value.parse()?,
-                    Some((key, _)) => {
-                        bail!("unknown mc knob {key:?} in {spec:?} (void/heart/guards)")
+                    Some((key, value)) => {
+                        if !pass_knob(&mut pass, key, value)? {
+                            bail!("unknown mc knob {key:?} in {spec:?} ({PASS_KNOBS})");
+                        }
                     }
                 }
             }
@@ -194,7 +246,10 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
         }
         "newbie" => bail!("newbie does not take a suffix"),
         other => {
-            bail!("unknown bot {other:?} (greedy[:V,H,G] | newbie | mc[:samples[,knob=value]])")
+            bail!(
+                "unknown bot {other:?} \
+                 (greedy[:V,H,G[,knob=value]] | newbie | mc[:samples[,knob=value]])"
+            )
         }
     }
 }

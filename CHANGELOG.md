@@ -88,6 +88,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The pass policy is now **set-aware**: `greedy_pass` picks its three cards
+  one at a time, rescoring what is left after each, instead of taking the top
+  three of one flat sort of the dealt thirteen.  `pass_score`'s void term
+  reads the suit's *current* length, so removing a card escalates the bonus
+  along the suit it came from — a doubleton's two cards are worth +4 then +6
+  — and a triple that finishes a void now outbids three that merely start
+  three.  The flat form scored every card against a hand the pass was about
+  to change, and so could collect three void bonuses for emptying nothing:
+  on `♠J86 ♥A6 ♦K2 ♣976432` it passed A♥ K♦ J♠ and left both red doubletons
+  alive, where the sequential form passes A♥ K♦ 6♥ and opens a real heart
+  void.  Against a field of the old policy over 8,000 paired blocks on each
+  of three seeds: `rank +0.0100 ± 0.0014` (6.9 SE), `win +0.0042 ± 0.0006`
+  (7.3 SE), `points +0.088 ± 0.012`; in games mode, `rank +0.0272 ± 0.0073`.
+  The sequential selection carries essentially all of it — measured alone it
+  is `rank +0.0112 ± 0.0013` (8.8 SE).  The Monte Carlo leg is a null
+  (`rank +0.0022 ± 0.0031` over 6,000 blocks on each of two seeds, no column
+  negative): the search already rolls out its candidates, so a better
+  incumbent buys it little, and the win is the greedy bot's — which is also
+  the rollout policy and the browser's easier tiers.
+
+  Two consequences fell out of the rewrite.  Monte Carlo candidate 0 is now
+  *built* rather than inferred: `pass_candidates` calls `greedy_pass` and
+  dedups it against the pool, because the sequential policy and the flat
+  ranking agree only on the first card, so the "candidate 0 is the greedy
+  incumbent" invariant the significance gate defends could no longer be
+  inherited from two sorts happening to agree.  And the isolated
+  `monte carlo pass, 64 samples` bench rose 44% — a better incumbent leaves
+  more pass decisions statistically unresolved, so the adaptive width reaches
+  its 3× cap more often — while full-round throughput is unchanged (254 vs
+  249 rounds/s across three seeds), because the pass is one decision in
+  fourteen.  The `void_weight × spade_guards` re-sweep the unit change owed
+  was run and kept both defaults: `void_weight = 1` still beats 0 (−3.05 pp),
+  2 (−2.50) and 4 (−5.15), and `spade_guards` 3/4/6 all fall within noise
+  of 5.
+- Ties in the pass order are now **broken on purpose**.  At the shipped
+  `heart_weight = 0` the score is exactly symmetric under permuting ♣/♦/♥,
+  and every tie used to fall to whichever suit `Hand`'s iterator reached
+  first, which is clubs — an artifact of sort stability worth 0.145 cards a
+  pass that nobody designed and nobody had priced.  The replacement reads the
+  deck's danger: ♠A/♠K/♠Q first, then hearts, diamonds, clubs, and the spades
+  below the queen dead last because they are guards worth keeping.  The key
+  is injective over a hand, so no comparison anywhere resolves by position
+  and the `parallel` feature's bit-identity no longer depends on a stable
+  sort.  **The reordering is a measured null** and is kept for being explicit
+  rather than for being better: against the old clubs-first order over 8,000
+  blocks on each of three seeds, `rank +0.0013 ± 0.0013` (1.0 SE) and
+  `win +0.0008 ± 0.0005` (1.5 SE), against `not-last −0.0017 ± 0.0005`
+  (−3.7 SE) — it trades middle placements for outright wins.  The rival
+  ladder that ranks the minors above hearts (♦ > ♣ > ♥, the literal reading
+  of "diamonds are more dangerous than clubs") was **refuted** at
+  `rank −0.0020 ± 0.0009` (−2.3 SE) on the same three seeds.
+- `HeuristicConfig::two_of_clubs_bonus`, a flat pass-score bonus for the 2♣
+  alone, **defaulting to 6**.  The 2♣ is the one card in the deck whose play
+  is never a choice — its holder must lead it at the first trick — so it
+  costs nothing to give away, yet it scored bare rank 2 and was all but
+  unpassable.  Priced at 6 it goes ahead of anything scoring under 8.  The
+  value was searched on one seed over {1, 2, 3, 4, 6, 8} and confirmed on
+  three fresh ones at 8,000 blocks each: `rank +0.0019 ± 0.0004` (4.5 SE),
+  `win +0.0007 ± 0.0002` (4.0 SE), with `not-last` positive on every seed;
+  in games mode over 3,000 games, `rank +0.0061 ± 0.0022` and
+  `win +0.0030 ± 0.0011`.  The Monte Carlo leg is again a null
+  (`rank +0.0015 ± 0.0018`) except for `moons`, up 2.5 and 3.3 SE on the two
+  seeds — shedding the forced lead slightly helps a shot.  The effect is
+  visible directly in the prior instrument: rank 2 is now 0.63% of everything
+  received against rank 3's 0.02%, a bump at the bottom of the histogram that
+  is entirely this knob.
 - A Monte Carlo rollout that ends the game now pays normalized `3-2-1-0`
   matchpoints — a sole win 1, then ⅔, ⅓, and 0 for a sole last, ties
   averaged — instead of `1/k` for a k-way shared win and 0 for every
@@ -243,6 +309,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **A per-diamond pass bonus is refuted.**  The first trick is led in clubs
+  and cannot score, so one round of clubs is free and a club ought to be the
+  safest side-suit card to keep, making diamonds the dearer minor.  Built as
+  a flat `diamond_bonus`, swept, and measured wrong: `tune` put 1 at
+  `+0.20 ± 0.63` pp and 2 and 3 clearly under water (−0.70, −2.45), and the
+  arena refuted even the best arm at `rank −0.0075 ± 0.0013` (−5.9 SE) over
+  8,000 blocks on each of two seeds, `win` −3.9 and −3.8 SE.  The same
+  ordering was independently refuted as a tie-break (see the ♦ > ♣ > ♥ ladder
+  above), so two mechanisms of very different size agree.  The knob is
+  reverted in full — the argument survives, the number does not.  Anyone
+  reviving it should note the finest step available on this grid is a whole
+  rank, roughly an order of magnitude more than the tie-break artifact it
+  competes with, which is the case `passing-opponent-model.md`'s P3(i)
+  rescale exists to serve.
+- **The forced-void pass generator earns its keep under the new policy.**
+  The doc's sequencing owed a deletion A/B: sequential selection escalates
+  the void bonus along a completing suit, so it might subsume the
+  candidate-side patch that makes every short non-spade void reachable.  It
+  does not.  Removing the generator cost `rank −0.0063 ± 0.0017` (−3.7 SE),
+  `win −0.0032 ± 0.0007` (−4.8 SE) and `moons −0.0030 ± 0.0004` (−7.6 SE)
+  over 6,000 paired blocks, and bought no throughput back (252 vs 261
+  rounds/s).  The doc's worked example A — a hand where both the flat *and*
+  the sequential policy scatter, so only a forced triple reaches the void —
+  is now measured rather than argued.  Kept.
 - Measure the incoming-pass prior — what the shipped greedy pass actually
   sends the seat downstream of it — with a new `#[ignore]`d instrument,
   `tests/pass_prior.rs`, over 10⁶ four-hand deals

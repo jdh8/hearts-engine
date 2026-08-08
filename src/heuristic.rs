@@ -19,9 +19,9 @@ fn below(rank: Rank) -> Holding {
 ///
 /// The knowledge-free pass policy shared with the Monte Carlo rollouts:
 /// an unprotected Q♠ tops the list, bare A♠/K♠ follow (they catch the
-/// queen), hearts weigh an extra `heart_weight` times their rank, and
-/// cards of a short non-spade suit earn a void bonus scaled by
-/// `void_weight`.
+/// queen), hearts weigh an extra `heart_weight` times their rank, the 2♣
+/// takes a flat `two_of_clubs_bonus` for its forced lead, and cards of a
+/// short non-spade suit earn a void bonus scaled by `void_weight`.
 pub(crate) fn pass_score(hand: Hand, card: Card, config: HeuristicConfig) -> i32 {
     let mut score = i32::from(card.rank.get());
 
@@ -40,6 +40,13 @@ pub(crate) fn pass_score(hand: Hand, card: Card, config: HeuristicConfig) -> i32
         score += i32::from(config.heart_weight) * i32::from(card.rank.get());
     }
 
+    // The 2♣ has no play to choose — its holder must lead it at the first
+    // trick — so it is the cheapest card in the deck to give away, yet it
+    // scores bare rank 2 and is otherwise all but unpassable.
+    if card == Card::TWO_OF_CLUBS {
+        score += i32::from(config.two_of_clubs_bonus);
+    }
+
     // A short side suit is a void in the making; spades keep their guards.
     let len = hand[card.suit].len() as i32;
     if card.suit != Suit::Spades && len <= 3 {
@@ -48,11 +55,58 @@ pub(crate) fn pass_score(hand: Hand, card: Card, config: HeuristicConfig) -> i32
     score
 }
 
-/// The knowledge-free greedy pass: the three highest-scoring cards
-pub(crate) fn greedy_pass(hand: Hand, config: HeuristicConfig) -> [Card; 3] {
-    let mut cards: Vec<Card> = hand.into_iter().collect();
-    cards.sort_by_key(|&card| -pass_score(hand, card, config));
-    [cards[0], cards[1], cards[2]]
+/// Which card leaves first when two [`pass_score`]s tie
+///
+/// Ties are common — at the shipped `heart_weight = 0` the score is exactly
+/// symmetric under permuting ♣/♦/♥ — and they used to fall to whichever suit
+/// a stable sort saw first, which is clubs, a bias worth 0.145 cards a pass
+/// that nobody chose.  The rules break the symmetry properly: the first trick
+/// is led in clubs and cannot score, so a club is the safest side-suit card
+/// to keep, with diamonds dearer and hearts dearest.  ♠A/♠K/♠Q lead for the
+/// reason the tier bonuses exist; the spades below her are guards and go last.
+const fn danger(card: Card) -> u8 {
+    match card.suit {
+        Suit::Spades if card.rank.get() >= Rank::Q.get() => 4,
+        Suit::Spades => 0,
+        // ♣ 1, ♦ 2, ♥ 3 — `Suit` is `repr(u8)` in that order.
+        suit => suit as u8 + 1,
+    }
+}
+
+/// The total order the pass policy and the Monte Carlo ranking share
+///
+/// Total by construction: [`danger`] separates every suit but the two spade
+/// bands, and ranks inside one suit are distinct.  No tie survives to be
+/// settled by sort stability, so ordering never depends on iteration order.
+pub(crate) fn pass_key(hand: Hand, card: Card, config: HeuristicConfig) -> (i32, u8, u8) {
+    (
+        pass_score(hand, card, config),
+        danger(card),
+        card.rank.get(),
+    )
+}
+
+/// The knowledge-free greedy pass: three rounds of take the card that most
+/// wants to go, then rescore what is left
+///
+/// Rescoring is the point.  [`pass_score`] reads the suit lengths of the hand
+/// it is handed, so removing a card escalates the void bonus along the suit it
+/// came from — a doubleton's two cards are worth +4 then +6 — and a triple
+/// that finishes a void outbids three that merely start three.  A single sort
+/// cannot see that: it scores every card against the untouched thirteen and
+/// happily passes one card out of each of three short suits, emptying nothing.
+pub(crate) fn greedy_pass(mut hand: Hand, config: HeuristicConfig) -> [Card; 3] {
+    [(); 3].map(|()| {
+        // A `Copy` snapshot, so the scan borrows nothing the loop mutates —
+        // and so the score is visibly against the *current* hand.
+        let current = hand;
+        let pick = current
+            .into_iter()
+            .max_by_key(|&card| pass_key(current, card, config))
+            .expect("a passing hand holds thirteen cards");
+        hand.remove(pick);
+        pick
+    })
 }
 
 /// The card currently winning `trick`
@@ -189,6 +243,13 @@ pub struct HeuristicConfig {
     /// High-spade pass bonuses apply while holding fewer than this many
     /// spades below the queen; the default is 5
     pub spade_guards: u8,
+    /// Extra pass score for the 2♣ alone
+    ///
+    /// Its holder must lead it at the first trick, so the card carries no
+    /// choice worth keeping — the cheapest thing in the deck to give away —
+    /// yet it scores bare rank 2 and is otherwise all but unpassable.  Zero,
+    /// the default, leaves it at bare rank.
+    pub two_of_clubs_bonus: u8,
 }
 
 impl HeuristicConfig {
@@ -204,6 +265,7 @@ impl HeuristicConfig {
             void_weight: 1,
             heart_weight: 0,
             spade_guards: 5,
+            two_of_clubs_bonus: 6,
         }
     }
 }
@@ -428,6 +490,14 @@ mod tests {
         text.parse().expect("a valid hand")
     }
 
+    /// The policy this module replaced: one flat sort of the dealt thirteen,
+    /// ties falling to whichever suit `Hand`'s iterator reached first.
+    fn flat_pass(dealt: Hand, config: HeuristicConfig) -> [Card; 3] {
+        let mut cards: Vec<Card> = dealt.into_iter().collect();
+        cards.sort_by_key(|&card| -pass_score(dealt, card, config));
+        [cards[0], cards[1], cards[2]]
+    }
+
     #[test]
     fn passing_dumps_the_unprotected_queen() {
         // Q♠ with one guard, the A♥, and filler.
@@ -440,6 +510,84 @@ mod tests {
         let guarded = hand("234.8.9A.234567Q");
         let picks = greedy_pass(guarded, HeuristicConfig::default());
         assert!(!picks.contains(&card("Q♠")));
+    }
+
+    #[test]
+    fn passing_completes_a_void_instead_of_scattering() {
+        // ♠J86 ♥A6 ♦K2 ♣976432.  Scored flat against the dealt thirteen the
+        // order is A♥ 18, K♦ 17, J♠ 11, 6♥ 10, so one sort passes A♥ K♦ J♠
+        // and leaves both red doubletons alive — three void bonuses
+        // collected, no void created.  Sequentially the A♥ leaves the 6♥ a
+        // singleton worth 6 + 6 = 12, which beats the J♠: the pass opens a
+        // real heart void and keeps the 2♦ as a clean duck.
+        let dealt = hand("234679.2K.6A.68J");
+        assert_eq!(
+            greedy_pass(dealt, HeuristicConfig::default()),
+            [card("A♥"), card("K♦"), card("6♥")],
+        );
+
+        assert_eq!(
+            flat_pass(dealt, HeuristicConfig::default()),
+            [card("A♥"), card("K♦"), card("J♠")],
+            "the flat form scatters, which is what this replaced",
+        );
+    }
+
+    #[test]
+    fn the_pass_tie_break_is_designed_not_inherited() {
+        // The ladder: the queen and the two cards that catch her first, then
+        // hearts, diamonds, clubs, and a spade below the queen dead last
+        // because it is a guard worth keeping.
+        assert!(danger(card("Q♠")) > danger(card("A♥")));
+        assert!(danger(card("A♥")) > danger(card("A♦")));
+        assert!(danger(card("A♦")) > danger(card("A♣")));
+        assert!(danger(card("A♣")) > danger(card("J♠")));
+
+        // And the ladder reaching the policy.  Four nines score exactly 9
+        // apiece — a four-card suit earns no void bonus and `heart_weight`
+        // is zero — so nothing but the tie-break decides.  Stable-sort order
+        // used to send the clubs first; the 9♠ is a guard and never goes.
+        let nines = hand("2349.2349.2349.9");
+        assert_eq!(
+            greedy_pass(nines, HeuristicConfig::default()),
+            [card("9♥"), card("9♦"), card("9♣")],
+        );
+        assert_eq!(
+            flat_pass(nines, HeuristicConfig::default()),
+            [card("9♣"), card("9♦"), card("9♥")],
+            "sort stability used to reach for the clubs first",
+        );
+
+        // With five guards the Q♠/A♠/K♠ tier is disarmed, so a bare K♠ and a
+        // K♣ both score 13 and the danger class is the whole difference: the
+        // spade honor goes, the club stays.
+        assert_eq!(
+            greedy_pass(hand("234K..23K.23456K"), HeuristicConfig::default()),
+            [card("K♥"), card("K♠"), card("K♣")],
+        );
+    }
+
+    #[test]
+    fn the_forced_lead_is_worth_passing() {
+        // Four-card clubs, so the 2♣ takes no void bonus and the knob is the
+        // whole difference; the red three-card fragments are the rivals.
+        let dealt = hand("2345.234.234.234");
+        assert_eq!(
+            greedy_pass(dealt, HeuristicConfig::default()),
+            [card("2♣"), card("5♣"), card("4♣")],
+            "the shipped bonus sends the forced lead, then works the suit",
+        );
+
+        // Priced at bare rank 2 it is the last card in the deck to go, and
+        // the pass falls back to emptying hearts.
+        let unpriced = HeuristicConfig {
+            two_of_clubs_bonus: 0,
+            ..HeuristicConfig::default()
+        };
+        assert_eq!(
+            greedy_pass(dealt, unpriced),
+            [card("4♥"), card("3♥"), card("2♥")],
+        );
     }
 
     #[test]

@@ -31,6 +31,7 @@ struct Config {
     moon_defense: Vec<u8>,
     void_weight: Vec<u8>,
     heart_weight: Vec<u8>,
+    two_of_clubs_bonus: Vec<u8>,
     spade_guards: Vec<u8>,
 }
 
@@ -40,14 +41,17 @@ fn arms(config: &Config) -> Vec<HeuristicConfig> {
     for &moon_defense in &config.moon_defense {
         for &void_weight in &config.void_weight {
             for &heart_weight in &config.heart_weight {
-                for &spade_guards in &config.spade_guards {
-                    // `HeuristicConfig` is non-exhaustive: start from Default.
-                    let mut arm = HeuristicConfig::default();
-                    arm.moon_defense = moon_defense;
-                    arm.void_weight = void_weight;
-                    arm.heart_weight = heart_weight;
-                    arm.spade_guards = spade_guards;
-                    arms.push(arm);
+                for &two_of_clubs_bonus in &config.two_of_clubs_bonus {
+                    for &spade_guards in &config.spade_guards {
+                        // `HeuristicConfig` is non-exhaustive: start from Default.
+                        let mut arm = HeuristicConfig::default();
+                        arm.moon_defense = moon_defense;
+                        arm.void_weight = void_weight;
+                        arm.heart_weight = heart_weight;
+                        arm.two_of_clubs_bonus = two_of_clubs_bonus;
+                        arm.spade_guards = spade_guards;
+                        arms.push(arm);
+                    }
                 }
             }
         }
@@ -70,7 +74,9 @@ fn parse_list(text: &str) -> Result<Vec<u8>> {
 fn usage() {
     println!(
         "Usage: tune [--games N] [--seed N] [--moon-defense N,N,...] \\\n\
-         [--void-weight N,N,...] [--heart-weight N,N,...] [--spade-guards N,N,...]"
+         [--void-weight N,N,...] [--heart-weight N,N,...] \\\n\
+         [--two-of-clubs-bonus N,N,...] \\\n\
+         [--spade-guards N,N,...]"
     );
 }
 
@@ -82,6 +88,7 @@ fn parse_args() -> Result<Option<Config>> {
         moon_defense: vec![4, 8, 12, u8::MAX],
         void_weight: vec![0, 1, 2, 4],
         heart_weight: vec![default.heart_weight],
+        two_of_clubs_bonus: vec![default.two_of_clubs_bonus],
         spade_guards: vec![default.spade_guards],
     };
     let mut args = std::env::args().skip(1);
@@ -93,11 +100,13 @@ fn parse_args() -> Result<Option<Config>> {
             "--moon-defense" => config.moon_defense = parse_list(&value()?)?,
             "--void-weight" => config.void_weight = parse_list(&value()?)?,
             "--heart-weight" => config.heart_weight = parse_list(&value()?)?,
+            "--two-of-clubs-bonus" => config.two_of_clubs_bonus = parse_list(&value()?)?,
             "--spade-guards" => config.spade_guards = parse_list(&value()?)?,
             "--help" | "-h" => return Ok(None),
             other => bail!(
                 "unknown flag {other:?} (--games/--seed/--moon-defense\
-                 /--void-weight/--heart-weight/--spade-guards)"
+                 /--void-weight/--heart-weight\
+                 /--two-of-clubs-bonus/--spade-guards)"
             ),
         }
     }
@@ -147,8 +156,12 @@ fn paired_delta(outcomes: &[bool], baseline: &[bool]) -> (f64, f64) {
 
 fn describe(arm: HeuristicConfig) -> String {
     format!(
-        "moon={:>3} void={} heart={} guards={}",
-        arm.moon_defense, arm.void_weight, arm.heart_weight, arm.spade_guards,
+        "moon={:>3} void={} heart={} two={:>2} guards={}",
+        arm.moon_defense,
+        arm.void_weight,
+        arm.heart_weight,
+        arm.two_of_clubs_bonus,
+        arm.spade_guards,
     )
 }
 
@@ -194,8 +207,13 @@ fn main() -> Result<()> {
     {
         println!(
             "best: --moon-defense {} --void-weight {} --heart-weight {} \
-             --spade-guards {} ({delta:+.2} ± {error:.2} pp)",
-            arm.moon_defense, arm.void_weight, arm.heart_weight, arm.spade_guards,
+             --two-of-clubs-bonus {} --spade-guards {} \
+             ({delta:+.2} ± {error:.2} pp)",
+            arm.moon_defense,
+            arm.void_weight,
+            arm.heart_weight,
+            arm.two_of_clubs_bonus,
+            arm.spade_guards,
         );
     }
     Ok(())

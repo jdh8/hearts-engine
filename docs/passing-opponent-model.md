@@ -209,9 +209,13 @@ the spade tier is a recorded no-build (see P3iii).
 **Kill criterion.**  It is measurement; the output table lands in this
 doc and feeds P2/P3.
 
-**Status: MEASURED (2026-08-08).**  Shipped as `tests/pass_prior.rs`, an
-`#[ignore]`d instrument over 10⁶ four-hand deals at seed `0x261`; every
-figure below carries a binomial standard error under 0.0005.  It drives
+**Status: MEASURED (2026-08-08), then RE-MEASURED after the sibling's P1
+shipped.**  Shipped as `tests/pass_prior.rs`, an `#[ignore]`d instrument
+over 10⁶ four-hand deals at seed `0x261`; every figure below carries a
+binomial standard error under 0.0005.  **Every table in this section is
+the pre-P1 policy** — kept because the analysis that follows reasons from
+these numbers — and is superseded by the post-P1 table at the end of the
+section.  It drives
 the *shipped* policy through `HeuristicBot::pass_cards` rather than the
 `pub(crate)` `greedy_pass`, so it re-runs against whatever the policy
 becomes — which matters, because the sibling doc's P1 invalidates every
@@ -296,6 +300,45 @@ It is unowned by either doc today.  The sibling doc's P1 already says
 its tie-break "must be explicit and pinned by a test"; this measurement
 says the tie-break is not a formality but a live term, and that whatever
 rule replaces it should be chosen deliberately rather than inherited.
+
+#### Re-measured under the shipped policy (2026-08-08)
+
+The instrument drives `HeuristicBot::pass_cards`, so it re-runs against
+whatever the policy becomes — and the sibling's P1 changed all of it.
+
+| quantity | pre-P1 | shipped |
+| --- | --- | --- |
+| received ♣ | 0.8188 | **0.6735** |
+| received ♦ | 0.7447 | **0.7385** |
+| received ♥ | 0.6741 | **0.8391** |
+| received ♠ | 0.7624 | **0.7488** |
+| low spades per pass | 0.0270 | **0.0123** |
+| P(receive Q♠ │ we lack her) | 0.3235 | 0.3239 |
+| club refill, k = 0..3 | 0.683-0.695 | **0.489-0.508** |
+
+Four things worth carrying forward.
+
+1. **The club bias is gone and its mirror image is there on purpose.**
+   ♣ and ♥ swapped ends.  The 0.145-card spread that was a sort artifact
+   is now a 0.166-card spread that is a designed danger ladder — and,
+   per the sibling doc, worth about 1 SE either way.
+2. **The refill curve is still flat in `k`, and now much lower.**  The
+   structural reason has not changed — the giver cannot see our hand —
+   but the level tracks what the policy sends: we pass fewer clubs, so
+   we receive fewer clubs.  Any void discount must be re-read off the
+   shipped row, not the pre-P1 one, and the club figure moved most.
+3. **Incoming guards halved**, 0.0270 → 0.0123, because the ladder now
+   keeps ♠2..♠J deliberately.  P3(iii) was already a recorded no-build
+   at the larger number and is only more dead at the smaller one.
+4. **The rank histogram grew a bump at the bottom.**  Rank 2 is 0.63% of
+   everything received against rank 3's 0.02% — non-monotonic, and
+   entirely `two_of_clubs_bonus`.  The instrument cannot tell a 2♣ from
+   a 2♦ (the rank histogram is suit-blind), so if that knob is ever
+   re-tuned, add the two counters for `P(receive 2♣ │ we lack it)` — that
+   number *is* the knob's effect, measured directly.
+
+The Q♠/A♠/K♠ arrivals are unmoved: the honor tier dominates every other
+term by ~80 points, so no reordering below it can reach them.
 
 ### P2 — a noisy opponent generator
 
@@ -500,12 +543,20 @@ stage two after P0 → P5 only on P3 signal → P6 only against a field
 that shoots.
 
 **What is left, as of 2026-08-08.**  P0, P1, P2 and P4 are all closed —
-one shipped, one measured, two nulls.  Everything remaining in this doc
-is gated on work that belongs to the sibling: **P3 is next, and it
-cannot start until `passing-shape.md`'s P1 lands**, because that rewrite
-re-baselines the incumbent every P3 arena leg would be measured against.
-P5 waits on a P3 signal, P6 on an opponent pool that shoots.  So the
-next move in this campaign is not in this document.
+one shipped, one measured, two nulls.  **P3 is now unblocked**: the
+sibling's P1 has shipped, so the incumbent every P3 arena leg is measured
+against is finally the honest one.  P5 waits on a P3 signal, P6 on an
+opponent pool that shoots.
+
+Two of P3's sub-parts were partly settled from the sibling's side before
+P3 started.  P3(i)'s fractional rescale has a concrete revival trigger
+now: the sibling's `diamond_bonus` was refuted at −5.9 SE with the finest
+step this grid offers being a whole rank, so a term that wants to sit
+*between* 0 and 1 is exactly the case the ×4 rescale serves — but note
+that the one term measured on that grid came back negative, not merely
+too coarse.  And P3(ii)'s queen insurance now faces a policy that already
+keeps low spades by tie-break, which halved incoming guards; size it
+against the 0.0123 figure, not the 0.0270 one.
 
 P1's table changed two of P3's sub-parts before they were built.  P3(iii)
 is dead on arrival — measured incoming below-queen spades are 0.0270 per

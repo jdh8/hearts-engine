@@ -8,7 +8,7 @@
 //! state machine.
 
 use crate::heuristic::{
-    greedy_pass, greedy_play, moon_defense, pass_score, rollout_play, shoot_play,
+    greedy_pass, greedy_play, moon_defense, pass_key, rollout_play, shoot_play,
 };
 use crate::{HeuristicConfig, Strategy, View};
 use hearts::{Card, Hand, PassDirection, Phase, Rank, Round, RoundResult, Rules, Seat, Suit};
@@ -18,8 +18,9 @@ use rand::{Rng, RngExt as _};
 /// rank-adjacent equal-value equivalents; the rest are never worth a rollout.
 const MAX_CANDIDATES: usize = 8;
 
-/// How many of the highest [`pass_score`] cards seed the pass triples:
-/// all 20 triples of the top 6 are rolled before short-suit void candidates.
+/// How many of the highest [`pass_key`] cards seed the pass triples: every
+/// triple of the top 6 is rolled, after the greedy incumbent and before the
+/// short-suit void candidates.
 const PASS_POOL: usize = 6;
 
 /// The world count of the first scoring batch; each later batch doubles the
@@ -483,13 +484,36 @@ fn pass_observation_likelihood(plausible: Hand, received: Hand, config: Heuristi
     0.75f64.powi(misses)
 }
 
-/// The candidate passes: all triples of the [`PASS_POOL`] highest-scoring
-/// cards, the greedy triple first; passes that empty a short side suit; plus
-/// the one moon pass
+/// Add `triple` unless the pool already holds those three cards
+///
+/// A pass is a set, so two orderings of one triple are one candidate.  The
+/// incumbent is seeded first and is exactly the triple the pool loop is most
+/// likely to regenerate, which is why this is shared rather than inline.
+fn push_new(triples: &mut Vec<[Card; 3]>, triple: [Card; 3]) {
+    let set: Hand = triple.into_iter().collect();
+    if !triples
+        .iter()
+        .any(|old| old.iter().copied().collect::<Hand>() == set)
+    {
+        triples.push(triple);
+    }
+}
+
+/// The candidate passes: the greedy incumbent first, then every triple of the
+/// [`PASS_POOL`] highest-ranked cards, passes that empty a short side suit,
+/// plus the one moon pass
+///
+/// Candidate 0 is [`greedy_pass`] itself, built rather than inferred.  The
+/// ranking below agrees with the policy on the first card and nowhere after
+/// it — the policy rescores against the shrinking hand — so the invariant the
+/// significance gate defends can no longer be inherited from two sorts that
+/// happened to agree.
 fn pass_candidates(view: &View<'_>, config: HeuristicConfig) -> Vec<Candidate> {
     let hand = view.hand();
     let mut ranked: Vec<Card> = hand.into_iter().collect();
-    ranked.sort_by_key(|&card| -pass_score(hand, card, config));
+    // `pass_key` is injective over a hand, so the sort needs no stability and
+    // the order is the same on every build.
+    ranked.sort_unstable_by_key(|&card| core::cmp::Reverse(pass_key(hand, card, config)));
 
     // The mirror of the greedy triple: the three cards the pass policy least
     // wants gone are low cards of long suits, which is exactly the ballast a
@@ -499,11 +523,12 @@ fn pass_candidates(view: &View<'_>, config: HeuristicConfig) -> Vec<Candidate> {
         .expect("a passing hand holds thirteen cards");
 
     let pool = &ranked[..ranked.len().min(PASS_POOL)];
-    let mut triples = Vec::<[Card; 3]>::with_capacity(23);
+    let mut triples = Vec::<[Card; 3]>::with_capacity(24);
+    triples.push(greedy_pass(hand, config));
     for i in 0..pool.len() {
         for j in i + 1..pool.len() {
             for k in j + 1..pool.len() {
-                triples.push([pool[i], pool[j], pool[k]]);
+                push_new(&mut triples, [pool[i], pool[j], pool[k]]);
             }
         }
     }
@@ -525,14 +550,10 @@ fn pass_candidates(view: &View<'_>, config: HeuristicConfig) -> Vec<Candidate> {
                 .filter(|card| card.suit != suit)
                 .take(3 - cards.len()),
         );
-        let triple: [Card; 3] = cards.try_into().expect("a passing hand has filler");
-        let set: Hand = triple.into_iter().collect();
-        if !triples
-            .iter()
-            .any(|old| old.iter().copied().collect::<Hand>() == set)
-        {
-            triples.push(triple);
-        }
+        push_new(
+            &mut triples,
+            cards.try_into().expect("a passing hand has filler"),
+        );
     }
 
     let mut out: Vec<Candidate> = triples
@@ -1445,6 +1466,49 @@ mod tests {
         for card in picks {
             assert!(view.hand().contains(card));
         }
+    }
+
+    #[test]
+    fn pass_candidate_zero_is_the_greedy_incumbent() {
+        // The invariant the significance gate defends: candidate 0 is the
+        // pass the policy would make unaided.  It used to hold by accident,
+        // two sorts of the same key agreeing; the sequential policy rescores
+        // against the shrinking hand and agrees only on the first card, so
+        // the incumbent is now built rather than inferred.  This is the hand
+        // where they part: flat ranks J♠ third, sequential takes 6♥.
+        fn hand(text: &str) -> Hand {
+            text.parse().expect("a valid hand")
+        }
+        let mine = hand("234679.2K.6A.68J");
+        let mut hands = [mine, Hand::EMPTY, Hand::EMPTY, Hand::EMPTY];
+        for (i, card) in (Hand::ALL - mine).into_iter().enumerate() {
+            hands[1 + i % 3].insert(card);
+        }
+        let round = Round::from_deal(Rules::new(), PassDirection::Left, hands).unwrap();
+        let table = Table::new(round);
+        let config = HeuristicConfig::default();
+
+        let incumbent = greedy_pass(mine, config);
+        let cands = pass_candidates(&table.view(Seat::North), config);
+        assert!(
+            matches!(cands[0].choice, Choice::Pass(triple) if triple == incumbent),
+            "candidate 0 is not the greedy pass: {}",
+            cands[0].label,
+        );
+
+        // And it is offered once: the pool regenerates the same set, since
+        // every card of it ranks inside the top six.
+        let set: Hand = incumbent.into_iter().collect();
+        assert_eq!(
+            cands
+                .iter()
+                .filter(|candidate| !candidate.shoot)
+                .filter(|candidate| matches!(candidate.choice, Choice::Pass(triple)
+                    if triple.into_iter().collect::<Hand>() == set))
+                .count(),
+            1,
+            "the pool re-rolled the incumbent as a second candidate",
+        );
     }
 
     #[test]

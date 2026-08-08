@@ -34,16 +34,21 @@ what they removed:
   `play_round`, rand-gated `play_game`; `EngineError::IllegalAction`
   leaves the table untouched so retries work.  Passing turn order is the
   first unpassed seat in `Seat::ALL`.
-- `src/heuristic.rs` — `pass_score`/`greedy_pass`/`greedy_play` (the
-  point-aware knowledge-free core, `pub(crate)`, shared with rollouts) and
-  `HeuristicBot` with the knowledge-based moon-defense overlay (OFF in
-  rollouts).
+- `src/heuristic.rs` — `pass_score`/`pass_key`/`greedy_pass`/`greedy_play`
+  (the point-aware knowledge-free core, `pub(crate)`, shared with rollouts)
+  and `HeuristicBot` with the knowledge-based moon-defense overlay (OFF in
+  rollouts).  `greedy_pass` is *sequential*: three rounds of argmax over
+  `pass_key`, removing each pick and rescoring, so the void bonus escalates
+  along a completing suit and a triple that finishes a void beats three
+  that start three.  `pass_key` is `(pass_score, danger, rank)` and is
+  injective over a hand — no tie ever falls to iteration order.
 - `src/mc.rs` — `MonteCarloBot`: `sample_hands` (randomized
   most-constrained-first backtracking under voids/known/capacities, softly
   weighted by the known giver's pass),
   world reconstruction, candidate generation (plays collapsed by
-  rank-adjacency, passes = all 20 triples of the top-6 `pass_score`
-  cards plus short-suit voids), common-random-number batches with gated
+  rank-adjacency, passes = the `greedy_pass` incumbent, then every triple
+  of the top-6 `pass_key` cards, plus short-suit voids, all deduped as
+  card sets), common-random-number batches with gated
   challenger elimination, `assess()`.  `Assessment::ev` is expected round
   points — LOWER is better, unlike gin's signed gain.  The three places
   the search models *passing* — the rollout opponents' passes, that soft
@@ -83,7 +88,10 @@ what they removed:
 - The void table is *sound*, never complete: `is_void` true implies the
   seat is genuinely void.  Update it in exactly one place (`Table::step`)
   and recover it in `infer_voids` the same way.
-- Monte Carlo candidate 0 is the greedy incumbent; the bot deviates only
+- Monte Carlo candidate 0 is the greedy incumbent, *enforced* by calling
+  `greedy_pass`/`greedy_play` rather than inherited from a ranking that
+  happens to agree — the sequential pass policy and the flat `pass_key`
+  ranking part company after the first card.  The bot deviates only
   past the paired significance gate in `beats` (`gate()`, default
   1.5 SE — measured, not taste).  The `parallel` feature must stay
   bit-identical: batch results are collected in world order and reduced

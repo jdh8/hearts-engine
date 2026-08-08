@@ -1,7 +1,9 @@
 # Shape-aware passing — betting on voids and shapely hands
 
-**Status: PROPOSAL (2026-08-08).**  Design only — nothing below is
-implemented.  Sibling:
+**Status: IN PROGRESS (2026-08-08).**  P1 has **shipped**, with its
+mandatory re-sweep and its deletion A/B both run; the tie-break question
+it left open is settled and a new P6 opened and closed alongside it.  P2
+and P3 are unstarted and now unblocked.  Sibling:
 [passing-opponent-model.md](passing-opponent-model.md), whose P1
 measures the refill risk this doc's void bets are discounted by; this
 doc's P1 lands before any of the sibling's scorer changes.
@@ -30,6 +32,10 @@ scorer (argued down as P4).  Refill modeling belongs to the sibling.
 | pass pool 6→7 | 0.9 SE, +34% latency | blanket widening is dead |
 | 45% moon bar | reverted | shoot rides the majority bar |
 | `mc:64` pass 5.87 ms | — | latency is a real cost axis |
+| P1 sequential pass | `+0.0100 ± 0.0014` rank | structure beats scalars, again |
+| P1's tie-break | `+0.0013 ± 0.0013` rank | ties are worth less than they look |
+| `diamond_bonus = 1` | `−0.0075 ± 0.0013` rank | the minor-suit story is wrong |
+| `two_of_clubs_bonus = 6` | `+0.0019 ± 0.0004` rank | a *card* can be new content |
 
 The first two say passing and shape pay; the middle two say how *not*
 to buy them — structure instead of scalars, targeted candidates
@@ -110,8 +116,13 @@ complements.
 | P3 | shape-aware shoot pass | pool only | dual-use bet |
 | P4 | hand-level keep score | policy | argued YAGNI |
 | P5 | 4-card-suit shortening | — | note and skip |
+| P6 | per-suit and per-card hazard offsets | policy (all four) | half shipped |
 
 ### P1 — sequential set-aware `greedy_pass`
+
+**Status: SHIPPED (2026-08-08).**  Built as designed; the numbers, the
+settled tie-break and the two obligations it carried are in the closing
+subsection below.
 
 **Mechanism.**  Three rounds of: argmax `pass_score` over the
 *current* hand, remove the pick, rescore.
@@ -194,6 +205,111 @@ KEEP, per example A.
 **Kill criterion.**  At confirm: `rank` under 2 SE, or `win` negative
 by more than 2 SE, or the greedy self-play leg negative by more than
 2 SE — revert the one-function diff and record the null.
+
+#### What P1 settled
+
+Every arm below is one new-policy seat against three seats of the old
+one, paired on identical deals inside a single build — a knobless policy
+change moves the arm *and* the field it is scored against, so the
+"cross-build paired game blocks" this section originally called for
+cannot work: a homogeneous greedy field prints `0.000±0.000` in both
+builds by construction.  A temporary `legacy_pass` config value carried
+the old policy alongside the new one and was deleted on the last commit;
+it reproduced the pre-change engine's arena CSV byte for byte, including
+an `mc:128` seat, which is what makes the pairing trustworthy.
+
+| arm, vs the old policy | pooled `rank`, 3 × 8,000 blocks |
+| --- | --- |
+| P1 + the new tie-break (shipped) | `+0.0100 ± 0.0014` (6.9 SE) |
+| P1 alone, old tie-break | `+0.0112 ± 0.0013` (8.8 SE) |
+| the tie-break alone | `+0.0013 ± 0.0013` (1.0 SE) |
+| the ♦ > ♣ > ♥ rival ladder | `−0.0020 ± 0.0009` (−2.3 SE) |
+
+**The sequential selection is the whole effect.**  `win` moves
+`+0.0042 ± 0.0006` and games mode reads `rank +0.0272 ± 0.0073`.  The
+Monte Carlo leg is a null — `rank +0.0022 ± 0.0031` over 6,000 blocks on
+each of two seeds, no column negative — which is the expected shape: the
+search rolls out its candidates anyway, so a better incumbent buys it
+little, and the win belongs to the greedy bot, the rollout policy and
+the browser's easier tiers.
+
+**The tie-break is a measured null, and is kept for being explicit.**
+This doc predicted the replacement rule "should be chosen on purpose";
+it now is (♠A/♠K/♠Q, then ♥, ♦, ♣, then the queen's guards), and it is
+worth about nothing — `+1.0 SE` on `rank`, `+1.5 SE` on `win`, against
+`−3.7 SE` on `not-last`, i.e. it trades middle placements for outright
+wins.  What the measurement *did* settle is the direction: the rival
+ladder that ranks the minors above hearts is refuted at `−2.3 SE`, so
+whatever else is true, hearts belong at the top of the order.  The
+0.145-card club bias is gone; the instrument now reads ♥ 0.8391,
+♠ 0.7488, ♦ 0.7385, ♣ 0.6735, a spread of the same size pointing the
+other way and on purpose this time.
+
+**Both obligations discharged.**  The mandatory `void_weight ×
+spade_guards` re-sweep — owed because the knob's unit changed from a
+flat multiplier to a marginal schedule — kept both defaults:
+`void_weight = 1` still beats 0 (−3.05 pp), 2 (−2.50) and 4 (−5.15), and
+`spade_guards` 3, 4 and 6 all sit inside noise of 5.  The **deletion
+A/B** came back the way this doc predicted, and harder: dropping the
+forced-void generator costs `rank −0.0063 ± 0.0017` (−3.7 SE),
+`win −4.8 SE`, `moons −7.6 SE`, and returns no throughput.  Worked
+example A is now measured rather than argued — the two mechanisms are
+complements.  **KEEP.**
+
+**Latency, with a wrinkle worth keeping.**  The isolated
+`monte carlo pass, 64 samples` bench rose **44%**, not the predicted
+neutral-to-faster.  The policy itself did get cheaper (three alloc-free
+argmax scans replace a `Vec` and a full sort); what grew is the *search*
+around it, because a better incumbent leaves more pass decisions
+statistically unresolved and the adaptive width reaches its 3× cap more
+often.  Full-round throughput is unchanged (254 vs 249 rounds/s across
+three seeds) — the pass is one decision in fourteen.  The lesson for the
+next pass proposal: a pass-bench delta is not a latency result, because
+the bench measures the one decision whose cost the significance gate is
+allowed to triple.
+
+### P6 — per-suit and per-card hazard offsets
+
+**Status: HALF SHIPPED (2026-08-08).**  Opened after P1, from the
+observation that the rules break the ♣/♦/♥ symmetry the scorer treats as
+exact.  Two independent claims, measured separately; they split.
+
+**Refuted — diamonds are not the dearer minor.**  The first trick is led
+in clubs and cannot score, so one round of clubs is free and a club
+should be the safest side-suit card to keep.  Built as a flat
+`diamond_bonus` (flat, not per rank like `heart_weight`: the safe round
+belongs to the suit, not to the card in it), swept, and wrong.  `tune`
+put 1 at `+0.20 ± 0.63` pp with 2 and 3 under water; the arena refuted
+even that best arm at `rank −0.0075 ± 0.0013` (−5.9 SE) over two seeds.
+The tie-break ladder above refutes the same ordering by a mechanism an
+order of magnitude smaller, so the two agree.  The knob is reverted in
+full.  The honest reading is that the free club round is real but is
+already spent by everyone at once, and what survives trick 1 is a suit
+four cards shorter that others void out of sooner — which is a reason to
+*shed* clubs, not keep them, and is what the old accidental order was
+doing.
+
+**Shipped — the 2♣ is worth its forced lead.**  It is the one card whose
+play is never a choice, so it costs nothing to give away, and it scored
+bare rank 2.  `two_of_clubs_bonus` defaults to **6**: value searched on
+one seed over {1, 2, 3, 4, 6, 8}, confirmed on three fresh ones at
+`rank +0.0019 ± 0.0004` (4.5 SE), `win +0.0007 ± 0.0002` (4.0 SE), with
+`not-last` positive on every seed and games mode at
+`rank +0.0061 ± 0.0022`.  The Monte Carlo leg is a null except `moons`,
+up 2.5 and 3.3 SE — shedding the forced lead slightly helps a shot.
+
+**Why this was not already absorbed.**  The absorption principle says
+`tune` has already priced any hand-independent prior into the shipped
+defaults.  It only holds where some existing term *can express* the
+prior: at `heart_weight = 0` nothing distinguished ♣ from ♦ from ♥, and
+no term had ever distinguished a single card.  Both were new content in
+P3's sense; one of them was also wrong.
+
+**Shelf variant, unbuilt.**  A singleton 2♣ collects the void bonus and
+this one for the same card leaving.  The overlap is partial — passing it
+makes us club-void *at* trick 1, which buys a free slough the void term
+does not price — so no gate was built.  Revisit only if a joint arm ever
+underperforms the parts.
 
 ### P2 — complete the generator: spade voids and double voids
 
@@ -309,16 +425,22 @@ systematic four-suit misses.
 P1 → P1's re-sweep and the forced-generator deletion A/B → P2 → P3 →
 P4 only on P1's grave; P5 never.  P1 goes first because it re-baselines
 the incumbent every later A/B must beat — measuring P2 or P3 against
-the scatter incumbent double-measures them.  Never share an arena
+the scatter incumbent double-measures them.  **All of the first arrow
+is done**: P1 shipped, the re-sweep kept both defaults, the deletion A/B
+said KEEP, and P6 ran in its own window afterwards.  P2 is next and is
+now measured against an honest incumbent.  Never share an arena
 window with the sibling doc's campaigns; correlated-deal noise already
 made one `void_weight = 2` stage-one float look real.
 
-If P1 lands, the ledger: the Vec-and-sort in `greedy_pass` (gone by
-construction); possibly the forced-void generator (the A/B decides;
-expected KEEP); the CLAUDE.md map line "passes = all 20 triples of the
-top-6 `pass_score` cards plus short-suit voids" and the candidate-0
-invariant wording (now enforced, not inherited); and `void_weight`'s
-doc comment — same knob, new unit, re-tuned by the re-sweep.
+P1 landed, and the ledger settled: the `Vec`-and-sort in `greedy_pass`
+is gone by construction; the forced-void generator **stays** (the A/B
+refuted its deletion at −3.7 SE); the CLAUDE.md map line and the
+candidate-0 invariant wording were both rewritten, the latter because
+the invariant is now enforced rather than inherited; and `void_weight`
+kept its value through the re-sweep the unit change owed.  Two things
+the ledger did not anticipate were also deleted: the temporary
+`legacy_pass` measurement scaffold, and `diamond_bonus`, which P6 built
+and refuted.
 
 ## Interactions with the opponent-model doc
 
@@ -373,6 +495,21 @@ purpose.  The obvious candidates — break ties toward the shorter suit
 kept honors — are cheap, and either is defensible where "clubs first" is
 not.  A/B them against the current order as part of P1's own arena leg,
 not as a follow-up.
+
+**Amended after P1 shipped.**  Two clauses above are now false and are
+kept only because the reasoning that follows from them is not.  The
+symmetry claim is void: `two_of_clubs_bonus = 6` distinguishes one club
+from every other card, so `pass_score` is no longer symmetric under
+permuting ♣/♦/♥, and the per-suit table those numbers came from has been
+re-measured (♥ 0.8391, ♠ 0.7488, ♦ 0.7385, ♣ 0.6735).  And "a defect
+worth fixing" oversold it: the tie-break was A/B'd on P1's own arena leg
+exactly as this paragraph asked, and replacing the club bias with a
+designed order is worth `+1.0 SE` of `rank`.  The bias was real, it was
+undesigned, and it was **nearly free** — a useful calibration for the
+next time a measurement turns up a large-looking artifact in a term that
+only fires on exact ties.  Neither of the two candidates this paragraph
+proposed was the rule chosen; the danger ladder came from the rules
+instead, and the one rival that was measured (♦ > ♣ > ♥) lost.
 
 ## Appendix — measurement boilerplate
 
