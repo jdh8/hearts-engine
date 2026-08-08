@@ -44,7 +44,7 @@ const COLS: [(&str, Option<f64>); 5] = [
     ("win", Some(1.0)),      // 1-0-0-0, the shipped rule; 1/k on a shared win
     ("not-last", Some(3.0)), // 1-1-1-0, loss aversion
     ("rank", Some(6.0)),     // 3-2-1-0 matchpoints, tied ranks averaged
-    ("moons", None),         // moons shot per round
+    ("moons", None),         // completed moons per round
 ];
 /// Index of the `points` column: the paired zero-sum search signal.
 const POINTS: usize = 0;

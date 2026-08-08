@@ -47,8 +47,8 @@ what they removed:
   weighted by the known giver's pass),
   world reconstruction, candidate generation (plays collapsed by
   rank-adjacency, passes = the `greedy_pass` incumbent, then every triple
-  of the top-6 `pass_key` cards, plus short-suit voids, all deduped as
-  card sets), common-random-number batches with gated
+  of the top-6 `pass_key` cards, plus short non-spade-suit voids, all
+  deduped as card sets), common-random-number batches with gated
   challenger elimination, `assess()`.  `Assessment::ev` is expected round
   points — LOWER is better, unlike gin's signed gain.  The three places
   the search models *passing* — the rollout opponents' passes, that soft
@@ -71,7 +71,8 @@ what they removed:
   It reports five columns: `points` (`mean(others) − own`, the search
   signal) and the three constant-sum rank payoffs `win` (`1-0-0-0`, the
   shipped rule), `not-last` (`1-1-1-0`) and `rank` (`3-2-1-0`), plus
-  `moons`.  Their disagreement is the point — with four players
+  `moons` (completed moons per round for the measured seat).  Their
+  disagreement is the point — with four players
   "seek the win" and "avoid the loss" are different objectives.
   A/B convention: `rank` is the primary detector (most sensitive under
   Hearts' moon-heavy tails), `points` the interpretable magnitude,

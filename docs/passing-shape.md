@@ -3,7 +3,7 @@
 **Status: IN PROGRESS (2026-08-08).**  P1 has **shipped**, with its
 mandatory re-sweep and its deletion A/B both run; the tie-break question
 it left open is settled and a new P6 opened and closed alongside it.  P2
-and P3 are unstarted and now unblocked.  Sibling:
+is closed as a screen null; P3 is next.  Sibling:
 [passing-opponent-model.md](passing-opponent-model.md), whose P1
 measures the refill risk this doc's void bets are discounted by; this
 doc's P1 lands before any of the sibling's scorer changes.
@@ -36,6 +36,7 @@ scorer (argued down as P4).  Refill modeling belongs to the sibling.
 | P1's tie-break | `+0.0013 ± 0.0013` rank | ties are worth less than they look |
 | `diamond_bonus = 1` | `−0.0075 ± 0.0013` rank | the minor-suit story is wrong |
 | `two_of_clubs_bonus = 6` | `+0.0019 ± 0.0004` rank | a *card* can be new content |
+| P2 shape candidates | no positive rank arm at screen | targeted reach can still be dead |
 
 The first two say passing and shape pay; the middle two say how *not*
 to buy them — structure instead of scalars, targeted candidates
@@ -43,9 +44,9 @@ instead of wider pools.
 
 ## Where shape lives today
 
-### One weak per-card term
+### One per-card term, applied sequentially
 
-`pass_score` (`src/heuristic.rs:25-49`) values shape in one clause:
+`pass_score` (`src/heuristic.rs`) values shape in one clause:
 
 ```rust
 // A short side suit is a void in the making; spades keep their guards.
@@ -57,33 +58,30 @@ if card.suit != Suit::Spades && len <= 3 {
 
 Singleton +6, doubleton +4, three-card suit +2 at the default
 `void_weight = 1` — against a 2..14 rank scale and an 80..100 spade
-tier.  Every card is scored against the *un-mutated* thirteen-card
-hand, and `greedy_pass` (`src/heuristic.rs:52-56`) is one flat sort,
-so three cards from three different 3-card suits collect +2 each while
-emptying nothing.  The policy cannot see whether its triple creates a
-void.
+tier.  `greedy_pass` (`src/heuristic.rs`) now picks one card, removes it
+and rescores, so completion escalates along a suit.  It is still a
+coordinate-wise policy rather than a search over whole triples:
+worked example A remains a hand where all three picks scatter.
 
 ### Four consumers
 
-The policy serves four call sites at once — own pass
-(`src/heuristic.rs:302`), the rollout opponents (`src/mc.rs:297`), the
-play-time observation model (`src/mc.rs:455`), and candidate ranking
-(`src/mc.rs:468`), whose first triple is the Monte Carlo incumbent.
-The incumbent identity is an *accident*: `pass_candidates` never calls
-`greedy_pass`, it re-sorts by the same score (`src/mc.rs:477-485`).
-Any change to the policy moves all four; the sibling doc's coupling
-table is the reference.
+The policy serves four roles at once — own pass, rollout-opponent
+passes, the play-time observation model, and the Monte Carlo incumbent.
+`pass_candidates` (`src/mc.rs`) now calls `greedy_pass` for candidate
+zero explicitly, while its top-six combination pool uses the flat
+`pass_key` ranking.  Any policy change still moves all four roles; the
+sibling doc's coupling table is the reference.
 
 ### The Monte Carlo set-level patch
 
-`pass_candidates` (`src/mc.rs:465-528`): the 20 triples over the top-6
+`pass_candidates` (`src/mc.rs`): the 20 triples over the top-6
 pool, then — precisely because independent scores cannot complete a
 void — a forced triple per **non-spade** suit of length 1-3, the
 suit's cards padded with the highest-scored outsiders, deduped; plus
 one shoot candidate, the bottom three scores.  The forced triples are
 the only set-level shape reasoning in the crate and they shipped
-`+0.0817 ± 0.0164` points/deal.  Gaps: spades are excluded
-(`src/mc.rs:491`), each suit gets exactly one filler choice, and
+`+0.0817 ± 0.0164` points/deal.  Gaps tested by P2: spades are excluded,
+each suit gets exactly one filler choice, and
 double voids are generically unreachable — a singleton's fill is the
 top-scored outsiders, which are rarely the doubleton's cards.
 
@@ -161,7 +159,7 @@ first-card and singleton bonuses exactly where the tuned defaults put
 them and raises only the completion path.  Structure, not a scalar.
 
 **The spade-tier interaction.**  `guards` is recomputed from the
-current hand on every call (`src/heuristic.rs:28`), so passing a
+current hand on every call (`src/heuristic.rs`), so passing a
 below-queen spade can flip the tier gate mid-selection and arm
 +100/90/80 on a newly bare Q♠/A♠/K♠.  That is domain-correct — the
 kept hand really will hold fewer guards, and today's flat policy can
@@ -176,7 +174,7 @@ leg measures it directly), the rollout opponents and observation model
 (realism shifts), and the incumbent — `pass_candidates` must start
 *calling* `greedy_pass` for candidate 0 and dedup it against the pool
 triples, because the accidental sort-agreement breaks the moment the
-policy is sequential (`src/mc.rs:477-485`).  CLAUDE.md's "candidate 0
+policy is sequential (`src/mc.rs`).  CLAUDE.md's "candidate 0
 is the greedy incumbent" invariant becomes enforced rather than
 inherited.  A unit test pinning example B's flip guards the rewrite;
 the existing pass tests produce identical triples under both forms
@@ -313,10 +311,15 @@ underperforms the parts.
 
 ### P2 — complete the generator: spade voids and double voids
 
+**Status: REFUTED AT SCREEN (2026-08-08).**  None of the three
+predeclared arms produced a positive `rank` estimate over 2,000 paired
+blocks, so no arm was eligible for confirmation and the original pool
+was restored.
+
 **Mechanism.**  Two targeted additions to `pass_candidates`:
 
-- *(a) Spade voids.*  Delete the `suit != Suit::Spades` filter
-  (`src/mc.rs:491`) so a one-to-three-card spade holding also proposes
+- *(a) Spade voids.*  Delete the `suit != Suit::Spades` filter so a
+  one-to-three-card spade holding also proposes
   its emptying triple, filled as usual.  No honor gate: candidates are
   hypotheses and the rollouts judge them — the shipped patch's own
   design rule.
@@ -325,7 +328,7 @@ underperforms the parts.
 
 **Why.**  A spade void immunizes the hand against the queen hunt — the
 greedy policy itself smokes her out with low-spade leads
-(`src/heuristic.rs:100-110`), and a seat that cannot follow spades
+(`src/heuristic.rs`), and a seat that cannot follow spades
 cannot be caught; every later spade lead becomes a free slough.  The
 jewel is Q♠xx: pass all three and the queen leaves *and* the suit
 closes — a triple the tiered pool almost never contains because her
@@ -338,13 +341,13 @@ bets get a spade back (the amendment above), and it is disproportionately
 an honor: every giver's `pass_score` tops out on an unguarded
 Q♠/A♠/K♠, and a hand that just voided spades holds `guards = 0` by
 construction, so it cannot duck.  Two receipts are pathological — a bare
-A♠/K♠ is a catcher with no escort, which eats the very queen we shed, and
-the full ♠AKQ is a guaranteed 13, since any spade lead forces one of them
-and the queen's only masters are in our own hand.  That is why the void
-term excludes spades (`src/heuristic.rs:52`) and P2(a) must not change
-it: the emptying triple is offered to the *rollouts*, never to the
-policy.  The pricing is honest because a pass-phase world performs the
-real exchange (`src/mc.rs:314-327`) with the modeled givers' own greedy
+A♠/K♠ is a catcher with no escort, which can eat the very queen we shed.
+Receiving the full ♠AKQ creates a severe master-spade risk: a spade lead
+can force us to win while leaving the queen difficult to unload.  That is
+why the void term excludes spades (`src/heuristic.rs`) and P2(a) must
+not change it: the emptying triple is offered to the *rollouts*, never
+to the policy.  The pricing is honest because a pass-phase world performs the
+real exchange (`src/mc.rs`) with the modeled givers' own greedy
 passes, so the disaster arrives in the worlds at the model's own
 honor-dumping rate — if anything an overestimate, the tier firing
 whenever a giver holds fewer than `spade_guards` low spades.  Expect the
@@ -353,27 +356,66 @@ uniformly positive.
 
 **Coupling.**  None — pool only.
 
-**Latency.**  Worst case +3 candidates against the width-7 precedent
-of +15 always-on triples for +34%, and elimination drops hopeless
-triples after the first 32-world batch.  Budget +10% on the pass
-bench.
+**Latency.**  The 10/1/1/1 shape can add four candidates — the spade
+singleton and three suit pairs — not the three originally budgeted.
+Criterion remains a diagnostic after P1 showed that adaptive pass width
+can move the isolated bench without moving whole-round throughput; a
+confirmed arm would have faced a 10% full-round throughput gate.
 
-**Measurement.**  One joint A/B (both arms clone the shipped
-mechanism): 2,000-block screen, then a 6,195-block confirm at `mc:128`
-— the forced patch's own scale.  `rank` primary, `win` gate, `moons`
-watched: both additions should nudge attempts up.
+**Measurement.**  The overlap was split before screening: `spade` added
+the short-spade triple and every pair containing spades, `side` added
+only pairs among ♣/♦/♥, and `joint` added both.  Each faced the original
+pool at `mc:128` over the same 2,000 seed-0 paired blocks.  The sole
+confirmation arm would have been the positive-`rank` arm with the largest
+estimate and no `win` loss beyond 2 SE.
 
-**Kill criterion.**  Joint `rank` under 2 SE at confirm reverts both; on
-a *negative* joint arm ablate (a) first, the hazard above being the
-likeliest culprit.  If it ships but latency exceeds +10%, ablate the
-pairs arm to attribute.
+| seed-0 screen arm | `points` | `win` | `not-last` | `rank` | completed `moons` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| spade | `−0.0063 ± 0.0089` | `+0.0004 ± 0.0005` | `−0.0003 ± 0.0003` | `−0.0003 ± 0.0010` | `+0.0001 ± 0.0002` |
+| side | `+0.0023 ± 0.0023` | `+0.0000 ± 0.0000` | `+0.0000 ± 0.0000` | `+0.0000 ± 0.0000` | `+0.0001 ± 0.0001` |
+| joint | `−0.0040 ± 0.0092` | `+0.0004 ± 0.0005` | `−0.0003 ± 0.0003` | `−0.0003 ± 0.0010` | `+0.0003 ± 0.0003` |
+
+The side arm changed points in a handful of rounds but produced exactly
+the same placements in all 2,000 blocks.  Spade and joint shared a small
+negative `rank` estimate.  No arm met the predeclared positive screen, so
+the 6,195-block confirmation and full-round latency gate were correctly
+not run; choosing a null arm after seeing the screen would only manufacture
+a confirmation candidate.
+
+**Where the spade bet fired.**  A separate deterministic probe scored the
+old and spade pools on identical world batches for 4,096 dealt hands with
+one to three spades.  A new spade-emptying normal candidate cleared the
+real 1.5-SE gate only 42 times (1.03%):
+
+| dealt spades | honor class | eligible | selected | rate | mean rollout edge |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | Q-bearing | 49 | 0 | 0% | — |
+| 1 | A/K without Q | 79 | 0 | 0% | — |
+| 1 | low-only | 454 | 13 | 2.86% | `+0.00718` |
+| 2 | Q-bearing | 223 | 13 | 5.83% | `+0.00957` |
+| 2 | A/K without Q | 412 | 7 | 1.70% | `+0.00600` |
+| 2 | low-only | 810 | 2 | 0.25% | `+0.01646` |
+| 3 | exactly AKQ | 6 | 0 | 0% | — |
+| 3 | other Q-bearing | 478 | 3 | 0.63% | `+0.01551` |
+| 3 | A/K without Q | 723 | 1 | 0.14% | `+0.01916` |
+| 3 | low-only | 862 | 3 | 0.35% | `+0.04452` |
+
+The positive probe edges are conditional on the search selecting the
+candidate and therefore explain its choices; they are not an independent
+strength estimate.  The clearest local bet was a Q-bearing doubleton, but
+the aggregate arena says that exposing these rare choices adds no rank.
+The fixed-hand `mc:64` pass diagnostic moved from 9.764 ms to 9.685 ms
+(`−0.8%`, within Criterion's noise threshold).
+
+**Verdict.**  P2 is a screen null.  The candidate generator, temporary
+arena selector and probe were removed; no API or configuration remains.
 
 ### P3 — shape-aware shoot passes
 
 **The open question in the current rule.**  The moon candidate passes
 the bottom three of `pass_score`; the comment calls them "low cards of
 long suits, which is exactly the ballast a shot sheds"
-(`src/mc.rs:470-475`).  Because the void term pushes short-suit low
+(`src/mc.rs`).  Because the void term pushes short-suit low
 cards *up* the score, they escape the bottom — the rule systematically
 keeps short-suit junk in hand and sheds long-suit low cards.  For a
 long strong suit that reads backwards: after three rounds of a
@@ -393,14 +435,15 @@ the machinery below prices them instead of arguing.
   `shoot: true`.  The dual-use bet then runs both ways on the same
   set: as `shoot: false` it clears `beats` alone; as `shoot: true` it
   must also reach the moon in a strict majority of worlds
-  (`recommended`, `src/mc.rs:726-735`).  The bimodal-tails lesson
+  (`recommended`, `src/mc.rs`).  The bimodal-tails lesson
   stands — no shoot candidate ever rides the paired gate alone — and
   no new statistics are needed.
 
 **Coupling.**  Pool only.
 
-**Measurement.**  `moons` is the sensitive detector — the eight-point
-trigger resolved a half-point-of-percentage attempt shift at 8.6 SE
+**Measurement.**  Completed `moons` is the sensitive detector — the
+eight-point trigger resolved a half-point-of-percentage completed-moon
+shift at 8.6 SE
 over 6,000 blocks.  Screen 2,000 blocks on `moons` and `rank`, confirm
 at 6,000.  A small `not-last` cost is acceptable while `win` holds,
 the trade already shipped with the trigger.
@@ -446,9 +489,9 @@ P4 only on P1's grave; P5 never.  P1 goes first because it re-baselines
 the incumbent every later A/B must beat — measuring P2 or P3 against
 the scatter incumbent double-measures them.  **All of the first arrow
 is done**: P1 shipped, the re-sweep kept both defaults, the deletion A/B
-said KEEP, and P6 ran in its own window afterwards.  P2 is next and is
-now measured against an honest incumbent.  Never share an arena
-window with the sibling doc's campaigns; correlated-deal noise already
+said KEEP, and P6 ran in its own window afterwards.  P2 then closed as a
+screen null against that honest incumbent; P3 is next.  Never share an
+arena window with the sibling doc's campaigns; correlated-deal noise already
 made one `void_weight = 2` stage-one float look real.
 
 P1 landed, and the ledger settled: the `Vec`-and-sort in `greedy_pass`
@@ -553,7 +596,8 @@ cargo run --release --example arena -- --blocks 500 --csv \
   magnitude, `win` the ship gate; a homogeneous greedy field must
   print `0.000±0.000` exactly, and `tune`'s default arm must print
   `+0.00 ± 0.00` exactly.
-- Latency on the Criterion bench (`benches/decision.rs`), watching the
-  `mc:64` pass entry, baseline 5.87 ms.
+- Criterion's `mc:64` pass entry is a diagnostic, compared within one
+  machine/build.  Gate latency on repeated full-round arena throughput;
+  P1 showed that adaptive pass width can move the isolated bench alone.
 - The strength tripwire stays manual:
   `cargo test --release --test strength -- --ignored`.

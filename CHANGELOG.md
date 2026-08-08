@@ -205,7 +205,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bar reads.  Over 6,000 paired duplicate blocks across two seeds,
   `mc:128` gains `+0.0033 ± 0.0006` win equity (5.9 SE),
   `+0.0032 ± 0.0014` matchpoint rank (2.2 SE), and `+0.075 ± 0.020`
-  points/deal (3.7 SE), while moon attempts rise from 2.0 % to 2.5 % of
+  points/deal (3.7 SE), while completed moons rise from 2.0 % to 2.5 % of
   rounds (8.6 SE).  The lone cost is `not-last` at `−0.0011 ± 0.0005`
   (−2.3 SE): more shots means occasionally finishing last, and with four
   players seeking the win and avoiding the loss are different objectives
@@ -253,7 +253,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bonuses to three different suits while making no void reachable.  Over
   6,195 paired duplicate deals, the new candidates improve `mc:128` by
   `+0.0817 ± 0.0164` points/deal, `+0.0083 ± 0.0018` matchpoint rank, and
-  `+0.0038 ± 0.0008` win equity; moon attempts rise by `0.19 ± 0.04`
+  `+0.0038 ± 0.0008` win equity; completed moons rise by `0.19 ± 0.04`
   percentage points.
 - Make the shared greedy play/rollout policy point-aware.  Last to a clean
   trick it now takes control with the cheapest winner, while it still ducks
@@ -261,7 +261,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   letting global card order favor clubs.  For `mc:128` this improves the
   paired matchpoint rank payoff by `+0.0359 ± 0.0114` (3.2 SE) and the point
   margin by `+0.205 ± 0.095` per deal, with win equity unchanged
-  (`+0.0020 ± 0.0050`).  Moon attempts fall by `0.39 ± 0.17` percentage
+  (`+0.0020 ± 0.0050`).  Completed moons fall by `0.39 ± 0.17` percentage
   points.
 - The default significance gate drops from 2.0 to 1.5 standard errors,
   worth `+0.182 ± 0.046` points a deal for `mc:128` on paired duplicate
@@ -308,6 +308,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collapse only across ranks gone in *completed* tricks.
 
 ### Internal
+
+- **Spade-void and double-void pass candidates are a screen null.**  Three
+  disjoint `mc:128` pool arms faced the shipped pool over the same 2,000
+  seed-0 paired blocks: spade-emptying candidates moved `rank −0.0003 ±
+  0.0010`, side-suit double voids produced exactly `+0.0000 ± 0.0000`, and
+  their joint arm again moved `−0.0003 ± 0.0010`; no `win` estimate was
+  worse than 2 SE.  The predeclared rule required a positive rank estimate
+  to nominate one 6,195-block confirmation arm, so none advanced and no
+  full-round latency gate was run.  A 4,096-hand diagnostic shows the
+  search was selective rather than blind: only 42 newly offered
+  spade-emptying passes cleared its 1.5-SE decision gate, led by Q-bearing
+  doubletons at 13 of 223 hands.  That local rollout confidence did not
+  become aggregate strength.  The fixed-hand `mc:64` pass benchmark moved
+  from 9.764 to 9.685 ms (−0.8%, within Criterion's noise threshold).  The
+  generator changes, temporary arena selector and probe were removed; no
+  public API or configuration remains.
 
 - **A per-diamond pass bonus is refuted.**  The first trick is led in clubs
   and cannot score, so one round of clubs is free and a club ought to be the
@@ -443,7 +459,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   threshold.  Over 2,000 paired duplicate blocks, the looser bar leaves
   matchpoint rank flat (`−0.0001 ± 0.0014`) and its win-equity gain is
   unresolved (`+0.0009 ± 0.0006`, 1.6 SE), despite the intended rise in
-  moon attempts from 2.41 % to 2.65 %.  Points move `+0.028 ± 0.020` per
+  completed moons from 2.41 % to 2.65 %.  Points move `+0.028 ± 0.020` per
   deal and `not-last` moves `−0.0008 ± 0.0005`; because the primary rank
   detector did not improve, the 45 % arm was reverted and the conditional
   40 % arm was skipped.
