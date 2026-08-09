@@ -1210,6 +1210,29 @@ mod tests {
     }
 
     #[test]
+    fn shoot_candidate_requires_a_strict_majority() {
+        let candidates = [
+            Candidate {
+                label: "incumbent".into(),
+                choice: Choice::Play(Card::TWO_OF_CLUBS),
+                shoot: false,
+            },
+            Candidate {
+                label: "shoot".into(),
+                choice: Choice::Play(Card::TWO_OF_CLUBS),
+                shoot: true,
+            },
+        ];
+        let incumbent = vec![0.0; 4];
+        let challenger = vec![1.0; 4];
+        let mut scored = vec![(incumbent, 0.0, 0), (challenger, 0.0, 2)];
+
+        assert_eq!(recommended(&scored, &candidates, 1.5), 0);
+        scored[1].2 = 3;
+        assert_eq!(recommended(&scored, &candidates, 1.5), 1);
+    }
+
+    #[test]
     fn only_an_unresolved_best_challenger_is_contested() {
         let base: Vec<f64> = (0..32).map(|i| f64::from(i % 5)).collect();
         let uncertain: Vec<f64> = base

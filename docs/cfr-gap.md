@@ -1,9 +1,10 @@
 # Closing the Deep CFR gap — the moon campaign
 
-**Status: OPEN (2026-08-10).**  P0 is in flight; P1 is
-[passing-shape.md](passing-shape.md)'s P3, consumed here by reference;
-everything later waits its turn.  Siblings: passing-shape.md (owns P1's
-mechanism) and [passing-opponent-model.md](passing-opponent-model.md)
+**Status: OPEN (2026-08-10).**  P0's instrumentation has landed while
+its live smoke/baseline remains in flight; P1, consumed from
+[passing-shape.md](passing-shape.md)'s P3, was refuted at confirmation
+and shipped no change; P2 is next.  Siblings: passing-shape.md (owns
+P1's mechanism) and [passing-opponent-model.md](passing-opponent-model.md)
 (whose parked P6 is the nearest relative of this doc's P4).
 
 ## Goal and non-goals
@@ -113,6 +114,7 @@ them is a harness deficiency, not an engine one.  Hence P0.
 | `moon_defense` sweep 5–12 | 8 survives | the live trigger is priced — vs fields that rarely shoot |
 | point-aware greedy play | `rank +0.036`, moons −0.39 pp | strength can trade against moon rate |
 | `two_of_clubs_bonus` MC leg | null except moons +2.5/3.3 SE | pass shape reaches the moon column |
+| shape-aware shoot passes | `rank −0.0054 ± 0.0024` at confirm | local shape did not improve attempt quality |
 
 The first three define the design space for anything touching attempt
 selection: the double bar is load-bearing, and only a *shaped* revision
@@ -168,7 +170,8 @@ numbers, because this doc will outlive the lines.
 
 ### P0 — tournament instrumentation
 
-**Status: IN FLIGHT (2026-08-10).**
+**Status: INSTRUMENTATION LANDED; LIVE SMOKE/BASELINE IN FLIGHT
+(2026-08-10).**
 
 **Mechanism.**  Four additions, none touching a decision path:
 
@@ -210,35 +213,37 @@ changes at the same seed, that is a bug to fix, not a result.
 
 ### P1 — shape-aware shoot passes
 
-**Status: NEXT.**  This is passing-shape.md's P3, absorbed here as the
-campaign's first strength proposal; its mechanism text (d1: three
-lowest ranks outside the longest suit, shortest suits first; d2: the
-forced-void triple re-offered with `shoot: true`) stays in the sibling
-and is not duplicated.
+**Status: REFUTED AT CONFIRM (2026-08-10).**  This is
+passing-shape.md's P3, absorbed here as the campaign's first strength
+proposal; its mechanism and full measurement table stay in the sibling
+and are not duplicated.
 
-**Why it leads.**  The differential is the gap, and the shoot pass is
+**Why it led.**  The differential is the gap, and the shoot pass is
 the earliest lever on attempt quality.  The current rule — the bottom
 three of `pass_key` — systematically keeps short-suit junk (the void
 term pushes short-suit low cards *up* the score, out of the bottom) and
 sheds long-suit low cards that are masters-in-waiting behind a running
-A-K-Q.  Better-shaped shoot hands raise the completion rate that the
-majority bar then verifies over real rollouts; at `0.011` payoff per
-net moon, every point of completion percentage is worth about `0.09`
-payoff against CFR if his side holds still.
+A-K-Q.  The hypothesis was that better-shaped shoot hands would raise
+the completion rate that the majority bar then verifies over real
+rollouts; at `0.011` payoff per net moon, every point of completion
+percentage is worth about `0.09` payoff against CFR if his side holds
+still.
 
-**Measurement.**  Per the sibling: completed `moons` is the sensitive
-detector (the eight-point trigger resolved a half-point-of-percentage
-shift at 8.6 SE over 6,000 blocks); screen 2,000 blocks on `moons` and
-`rank`, confirm at 6,000, `win` the ship gate, a small `not-last` cost
-acceptable while `win` holds.  Tournament transfer is priced only by
-the next rerun, on P0's CSV.
-
-**Kill criterion.**  Per the sibling: the candidates are never chosen,
-or `rank`/`win` negative at confirm — revert, record in both ledgers.
+**Measurement and verdict.**  The candidates were live: a 4,096-hand
+probe selected d1 133 times and d2 24 times beside legacy.  Over the
+2,000-block seed-0 screen, d1 and joint had small positive `rank`
+estimates; joint led by `+0.0014 ± 0.0042`, passed the latency gate at
+−3.0%, and became the sole confirmation arm.  On 6,000 fresh seed-1
+blocks it lost `rank −0.0054 ± 0.0024`, `win −0.0034 ± 0.0010`,
+`points −0.0843 ± 0.0335`, and completed `moons −0.0042 ± 0.0009`.
+Both ship gates failed, so the legacy bottom-three shoot pass is
+restored and every measurement scaffold is gone.  No tournament
+transfer is claimed; the next P0 CSV rerun remains a baseline for the
+surviving campaign, not a price for P1.
 
 ### P2 — decision-conditional moon bar
 
-**Status: QUEUED, after P1.**
+**Status: NEXT (2026-08-10).**
 
 **The open question in the current rule.**  The strict majority encodes
 one global indifference point, computed from three mid-game constants:
@@ -378,15 +383,15 @@ argument later.
 
 ## Sequencing and the deletion ledger
 
-P0 → the instrumented 1,600-deal baseline rerun (which is also P1's
-tournament pricing if P1 lands first in the arena — one rerun serves
-both) → P1 → P2 → P3, each in its own arena window, never concurrent
-with each other or the sibling docs' campaigns → P4/P5 only on their
-unlock conditions, only after their own rerun evidence.  The campaign
-closes when a rerun's headline is inside 2 SE of zero, confirmed once
-on a fresh seed — or when the remaining proposals are all measured
-nulls, in which case the honest close is "the residue is not moons, and
-the next campaign is ordinary card play."
+P0's instrumentation has landed; its instrumented 1,600-deal baseline
+rerun remains outstanding.  P1 closed without a behavior change after
+joint was refuted at confirmation, so P2 is next, followed by P3, each
+in its own arena window and never concurrent with the sibling docs'
+campaigns.  P4/P5 remain conditional on their own rerun evidence.  The
+campaign closes when a rerun's headline is inside 2 SE of zero,
+confirmed once on a fresh seed — or when the remaining proposals are all
+measured nulls, in which case the honest close is "the residue is not
+moons, and the next campaign is ordinary card play."
 
 Ledger: the counters and CSV are instrumentation and stay; P2's clamp
 constants and P3's second line are deletable on their kill criteria;

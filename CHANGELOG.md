@@ -333,6 +333,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **Shape-aware shoot passes were refuted at confirmation and ship no
+  behavior change.**  A deterministic 4,096-hand probe established that
+  both new lines were selectable.  In the 2,000-block seed-0 screen,
+  replacing the legacy shoot pass with d1
+  moved `rank +0.0013 ± 0.0042`, adding d2 moved `−0.0008 ± 0.0014`,
+  and their joint arm led at `+0.0014 ± 0.0042`; joint's full-round
+  throughput was 3.0% below legacy, inside the 10% gate.  The sole
+  6,000-block seed-1 confirmation arm then lost `rank −0.0054 ±
+  0.0024`, `win −0.0034 ± 0.0010`, `points −0.0843 ± 0.0335`, and
+  completed `moons −0.0042 ± 0.0009`.  Both ship gates failed, so the
+  legacy bottom-three shoot pass was restored and all shape helpers,
+  arm selectors, probes, and candidate-origin counters were removed; no
+  API or configuration remains.  A synthetic regression test now pins
+  the existing strict moon bar: exactly half the worlds rejects a shoot
+  challenger, while more than half permits it.
 - **`vs_cfr` now records what the rerun below could not.**  `--csv PATH`
   writes one row per deal-seating — pair, seating, pass direction,
   `deal_seed`, CFR seats, the four raw seat scores, shooter seat and

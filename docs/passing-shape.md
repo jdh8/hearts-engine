@@ -1,10 +1,11 @@
 # Shape-aware passing — betting on voids and shapely hands
 
-**Status: IN PROGRESS (2026-08-08).**  P1 has **shipped**, with its
+**Status: CLOSED (2026-08-10).**  P1 has **shipped**, with its
 mandatory re-sweep and its deletion A/B both run; the tie-break question
 it left open is settled and a new P6 opened and closed alongside it.  P2
-is closed as a screen null; P3 is next, and is consumed by
-[cfr-gap.md](cfr-gap.md) as that campaign's P1 — its verdict lands in
+closed as a screen null; P3 was refuted at confirmation and left the
+engine unchanged; no proposal remains open.  P3 is consumed by
+[cfr-gap.md](cfr-gap.md) as that campaign's P1, so its verdict lands in
 both ledgers.  Sibling:
 [passing-opponent-model.md](passing-opponent-model.md), whose P1
 measures the refill risk this doc's void bets are discounted by; this
@@ -39,10 +40,12 @@ scorer (argued down as P4).  Refill modeling belongs to the sibling.
 | `diamond_bonus = 1` | `−0.0075 ± 0.0013` rank | the minor-suit story is wrong |
 | `two_of_clubs_bonus = 6` | `+0.0019 ± 0.0004` rank | a *card* can be new content |
 | P2 shape candidates | no positive rank arm at screen | targeted reach can still be dead |
+| P3 shoot-pass shape | `rank −0.0054 ± 0.0024` at confirm | shape that reads locally right can still lose |
 
-The first two say passing and shape pay; the middle two say how *not*
-to buy them — structure instead of scalars, targeted candidates
-instead of wider pools.
+The forced-void patch remains the one positive pool-level shape result.
+P2 and P3 say targeted reach and shoot-specific shape can still be dead;
+arena measurement, not local shape or candidate-level rollout confidence,
+decides what ships.
 
 ## Where shape lives today
 
@@ -80,12 +83,12 @@ sibling doc's coupling table is the reference.
 pool, then — precisely because independent scores cannot complete a
 void — a forced triple per **non-spade** suit of length 1-3, the
 suit's cards padded with the highest-scored outsiders, deduped; plus
-one shoot candidate, the bottom three scores.  The forced triples are
-the only set-level shape reasoning in the crate and they shipped
-`+0.0817 ± 0.0164` points/deal.  Gaps tested by P2: spades are excluded,
-each suit gets exactly one filler choice, and
-double voids are generically unreachable — a singleton's fill is the
-top-scored outsiders, which are rarely the doubleton's cards.
+one shoot candidate, the bottom three `pass_key` cards.  The forced
+triples are the only set-level shape reasoning in the crate and they
+shipped `+0.0817 ± 0.0164` points/deal.  Gaps tested by P2: spades are
+excluded, each suit gets exactly one filler choice, and double voids
+are generically unreachable — a singleton's fill is the top-scored
+outsiders, which are rarely the doubleton's cards.
 
 ### The rollouts already price shape
 
@@ -414,8 +417,13 @@ arena selector and probe were removed; no API or configuration remains.
 
 ### P3 — shape-aware shoot passes
 
+**Status: REFUTED AT CONFIRM (2026-08-10).**  All proposed lines were
+live, the predeclared largest-`rank` rule nominated joint and it passed
+the latency gate, then lost both `rank` and `win` on the fresh-seed
+confirmation.
+
 **The open question in the current rule.**  The moon candidate passes
-the bottom three of `pass_score`; the comment calls them "low cards of
+the bottom three of `pass_key`; the comment calls them "low cards of
 long suits, which is exactly the ballast a shot sheds"
 (`src/mc.rs`).  Because the void term pushes short-suit low
 cards *up* the score, they escape the bottom — the rule systematically
@@ -426,32 +434,66 @@ shooter wants — while a kept ♦74 doubleton is two tricks the shot must
 survive without being able to win them.  Both readings are hypotheses;
 the machinery below prices them instead of arguing.
 
-**Mechanism.**
+**Mechanism tested.**
 
-- *(d1)* Build the moon pass as the three lowest-rank cards *outside
-  the longest suit*, shortest suits first: shed the unwinnable, build
-  voids for the shot's sloughs, never break the running suit.  Prefer
-  replacement — candidate count unchanged — and fall back to addition
-  if replacement regresses.
-- *(d2)* Re-offer the shortest-suit forced-void triple with
-  `shoot: true`.  The dual-use bet then runs both ways on the same
-  set: as `shoot: false` it clears `beats` alone; as `shoot: true` it
-  must also reach the moon in a strict majority of worlds
-  (`recommended`, `src/mc.rs`).  The bimodal-tails lesson
-  stands — no shoot candidate ever rides the paired gate alone — and
-  no new statistics are needed.
+- *(d1)* Protect the suit maximizing `(length, strength, suit)`, with
+  strength the lexicographically descending raw-rank vector and the
+  explicit suit order ♣ < ♦ < ♥ < ♠.  Visit the other suits by
+  increasing that same key and take each one's cards in ascending rank
+  until the pass has three.  For the 11–13-card protected-suit fallback,
+  fill any remaining slots with its lowest ranks.  d1 replaced the
+  legacy shoot pass; d1-add, offered only if replacement regressed,
+  retained both.
+- *(d2)* Among eligible non-spade suits of length 1–3, minimize the same
+  key, then re-offer that suit's exact normal forced-void triple with
+  `shoot: true`, including its highest-`pass_key` outsider fillers.  The
+  normal and shoot versions of the set remain distinct.  Shoot lines were
+  appended d1 then d2 and deduplicated by `(card set, shoot flag)`, so a
+  d1/d2 collision left one shoot continuation.  With no eligible suit,
+  d2 added nothing.
+
+The dual-use d2 bet therefore ran both ways on the same set: as
+`shoot: false` it cleared `beats` alone; as `shoot: true` it also had to
+reach the moon in a strict majority of worlds (`recommended`,
+`src/mc.rs`).  The bimodal-tails lesson stood — no shoot candidate rode
+the paired gate alone — and no new statistic was added.
 
 **Coupling.**  Pool only.
 
-**Measurement.**  Completed `moons` is the sensitive detector — the
-eight-point trigger resolved a half-point-of-percentage completed-moon
-shift at 8.6 SE
-over 6,000 blocks.  Screen 2,000 blocks on `moons` and `rank`, confirm
-at 6,000.  A small `not-last` cost is acceptable while `win` holds,
-the trade already shipped with the trigger.
+**Liveness.**  A deterministic 4,096-hand `mc:128` probe counted
+normal/legacy/d1/d2 selections as 3,963/0/133/0 for d1,
+3,929/143/0/24 for d2, and 3,954/0/133/9 for joint.  The predeclared
+d1-add fallback was also live at 3,878/123/95/0, but was not screened
+because replacement did not regress.  Dead code was not the answer.
+The temporary legacy arm reproduced every decision and result field in
+the untouched 200-block seed-0 CSV; its raw file differed only in the
+echoed `,shoot=legacy` spec label, and was byte-identical after
+canonicalizing that label.  The restored engine reproduces the untouched
+file without normalization, and homogeneous greedy A/B output remains
+exactly zero.
 
-**Kill criterion.**  The new candidates are never chosen (dead code),
-or `rank`/`win` negative at confirm — revert.
+**Screen.**  Each arm faced legacy over the same 2,000 seed-0 blocks:
+
+| arm | `points` | `win` | `not-last` | `rank` | completed `moons` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| d1 replacement | `+0.0087 ± 0.0566` | `−0.0008 ± 0.0017` | `+0.0003 ± 0.0014` | `+0.0013 ± 0.0042` | `−0.0021 ± 0.0016` |
+| d2 addition | `+0.0117 ± 0.0182` | `+0.0001 ± 0.0006` | `−0.0005 ± 0.0005` | `−0.0008 ± 0.0014` | `+0.0009 ± 0.0005` |
+| joint | `+0.0185 ± 0.0576` | `−0.0006 ± 0.0017` | `+0.0004 ± 0.0014` | `+0.0014 ± 0.0042` | `−0.0016 ± 0.0016` |
+
+d2 failed the positive-`rank` screen.  Joint narrowly led d1, so it was
+the sole confirmation arm.  Repeated 500-block full-round runs over
+seeds 0–2 averaged 574 rounds/s against legacy's 592 (−3.0%), inside
+the predeclared 10% latency gate.
+
+**Confirmation and verdict.**  Over 6,000 fresh seed-1 blocks, joint
+lost `points −0.0843 ± 0.0335`, `win −0.0034 ± 0.0010`,
+`not-last −0.0002 ± 0.0008`, `rank −0.0054 ± 0.0024`, and
+completed `moons −0.0042 ± 0.0009`.  Both ship gates failed, harder
+than the screen's noise suggested.  The legacy bottom-three shoot pass
+is restored; the shape helpers, arm selector and probe were deleted,
+leaving no API or configuration.  The synthetic strict-majority test
+remains because it pins existing behavior: exactly half rejects a shoot
+challenger and more than half permits it.
 
 ### P4 — hand-level keep score: argued YAGNI
 
@@ -486,15 +528,12 @@ systematic four-suit misses.
 
 ## Sequencing and the deletion ledger
 
-P1 → P1's re-sweep and the forced-generator deletion A/B → P2 → P3 →
-P4 only on P1's grave; P5 never.  P1 goes first because it re-baselines
-the incumbent every later A/B must beat — measuring P2 or P3 against
-the scatter incumbent double-measures them.  **All of the first arrow
-is done**: P1 shipped, the re-sweep kept both defaults, the deletion A/B
-said KEEP, and P6 ran in its own window afterwards.  P2 then closed as a
-screen null against that honest incumbent; P3 is next.  Never share an
-arena window with the sibling doc's campaigns; correlated-deal noise already
-made one `void_weight = 2` stage-one float look real.
+P1 → P1's re-sweep and the forced-generator deletion A/B → P2 → P3 is
+complete.  P1 shipped, its re-sweep kept both defaults, the deletion A/B
+said KEEP, and P6 ran in its own window afterwards.  P2 closed as a
+screen null; P3 was refuted at confirmation and restored legacy as
+described above.  P4 was conditional on P1 failing and P5 was explicitly
+skipped, so the campaign is closed.
 
 P1 landed, and the ledger settled: the `Vec`-and-sort in `greedy_pass`
 is gone by construction; the forced-void generator **stays** (the A/B
