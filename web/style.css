@@ -349,12 +349,63 @@ body.log-hidden .log { display: none; }
   backdrop-filter: blur(2px);
 }
 .showdown[hidden] { display: none; }
-.moon-burst {
+.moon-burst,
+.game-burst {
   position: absolute;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
+}
+.game-win-glow,
+.game-last-vignette,
+.game-suit-particle {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+.game-win-glow {
+  left: 50%;
+  top: 48%;
+  width: min(42rem, 92vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 224, 112, 0.72), rgba(241, 203, 75, 0.2) 42%, transparent 68%);
+  box-shadow: 0 0 3.5rem rgba(241, 203, 75, 0.72);
+  transform: translate(-50%, -50%);
+  animation: game-win-glow 1.65s ease-out both;
+}
+.game-suit-particle {
+  left: 50%;
+  top: 48%;
+  color: var(--particle-colour);
+  font-size: 1.65rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 0 0.5rem rgba(255, 241, 182, 0.85);
+  transform: translate(-50%, -50%);
+  animation: game-suit-burst 1.55s cubic-bezier(.12, .72, .18, 1) var(--delay) both;
+}
+.game-last-vignette {
+  inset: 0;
+  background: radial-gradient(circle at 50% 48%, rgba(40, 33, 32, 0.12) 8%, rgba(19, 21, 21, 0.82) 88%);
+  backdrop-filter: grayscale(0.82);
+  animation: game-last-vignette 1.65s ease-out both;
+}
+@keyframes game-win-glow {
+  0% { transform: translate(-50%, -50%) scale(0.62); opacity: 0; }
+  24% { transform: translate(-50%, -50%) scale(0.9); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.12); opacity: 0; }
+}
+@keyframes game-suit-burst {
+  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) rotate(var(--spin)) scale(1.05); opacity: 0; }
+}
+@keyframes game-last-vignette {
+  0%, 100% { opacity: 0; }
+  20%, 68% { opacity: 1; }
 }
 .moon-particle,
 .moon-impact-flash,
@@ -448,11 +499,31 @@ body.log-hidden .log { display: none; }
   box-shadow: 0 10px 35px rgba(0, 0, 0, 0.42);
   text-align: center;
 }
+.showdown-sheet.outcome-win {
+  border: 2px solid #ddb438;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.42), 0 0 1.3rem rgba(241, 203, 75, 0.62);
+}
+.showdown-sheet.outcome-enter-win { animation: game-sheet-win 0.72s ease-out both; }
+.showdown-sheet.outcome-enter-last { animation: game-sheet-last 0.72s ease-out both; }
+@keyframes game-sheet-win {
+  0% { transform: scale(0.96); }
+  45% { transform: scale(1.025); }
+  100% { transform: scale(1); }
+}
+@keyframes game-sheet-last {
+  0%, 100% { transform: translateY(0); }
+  38% { transform: translateY(0.58rem); }
+  58% { transform: translateY(0.28rem); }
+  76% { transform: translateY(0.42rem); }
+}
 .showdown h2 { margin: 0 0 0.65rem; font-size: 1.2rem; }
 .moon { margin: 0 0 0.7rem; border-radius: 6px; padding: 0.45rem; font-weight: 800; }
 .moon-player { background: #f7e7a8; color: #734b00; }
 .moon-opponent { background: #f5d5d2; color: #8e211b; }
 .winner { margin-bottom: 0.7rem; color: #9c2724; font-size: 1.45rem; font-weight: 850; }
+.winner-win { color: #745000; text-shadow: 0 0 0.7rem rgba(241, 203, 75, 0.45); }
+.winner-last { margin-bottom: 0.42rem; }
+.placement-last { margin: 0 0 0.7rem; color: #8e211b; font-weight: 800; }
 .round-result { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.35rem; margin: 0 0 0.8rem; }
 .round-result span { display: flex; flex-direction: column; border-radius: 5px; background: #efeee7; padding: 0.32rem; font-variant-numeric: tabular-nums; }
 .round-result b { font-size: 0.72rem; }
@@ -493,9 +564,14 @@ body.log-hidden .log { display: none; }
   .moon-firework-particle,
   .moon-impact-flash,
   .moon-impact-ring,
-  .moon-impact-spark {
+  .moon-impact-spark,
+  .game-win-glow,
+  .game-last-vignette {
     animation: moon-feedback-fade 0.9s ease-out both;
   }
+  .game-suit-particle { display: none; }
+  .showdown-sheet.outcome-enter-win,
+  .showdown-sheet.outcome-enter-last { animation: none; }
 }
 @keyframes sting-fade {
   from { opacity: 0.95; }

@@ -27,6 +27,7 @@ let busy = false;
 let epoch = 0; // bumped when a click outruns an in-flight animation
 let selectedPass = new Set();
 let moonEffectRound = null; // a showdown may render repeatedly; cue it once
+let gameEffectShown = false;
 
 const id = (x) => document.getElementById(x);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -37,6 +38,7 @@ const glassBreak = new Audio(new URL('./audio/glass-break.mp3', import.meta.url)
 const queenKnell = new Audio(new URL('./audio/queen-knell.mp3', import.meta.url));
 const moonFireworks = new Audio(new URL('./audio/moon-fireworks.mp3', import.meta.url));
 const moonGunshot = new Audio(new URL('./audio/moon-gunshot.mp3', import.meta.url));
+let audioCtx;
 glassBreak.preload = 'auto';
 glassBreak.volume = 0.6;
 queenKnell.preload = 'auto';
@@ -55,6 +57,44 @@ function playSound(sound) {
     // audio is best-effort
   }
 }
+
+// Short synthesized game-result cues. They share the mute preference with
+// the sampled stings and remain best-effort: audio can still be unavailable
+// when a browser has not granted playback.
+function chime(notes) {
+  if (muted) return;
+  try {
+    audioCtx ??= new AudioContext();
+    audioCtx.resume().catch(() => {});
+    const start = audioCtx.currentTime;
+    for (const { frequency, at, duration, peak = 0.09 } of notes) {
+      const oscillator = new OscillatorNode(audioCtx, { type: 'triangle', frequency });
+      const gain = new GainNode(audioCtx, { gain: 0 });
+      gain.gain.setValueAtTime(0, start + at);
+      gain.gain.linearRampToValueAtTime(peak, start + at + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + at + duration);
+      oscillator.connect(gain).connect(audioCtx.destination);
+      oscillator.start(start + at);
+      oscillator.stop(start + at + duration);
+    }
+  } catch {
+    // audio is best-effort
+  }
+}
+
+const gameWinSound = () =>
+  chime([
+    { frequency: 523.25, at: 0, duration: 0.3 },
+    { frequency: 659.25, at: 0.12, duration: 0.34 },
+    { frequency: 783.99, at: 0.24, duration: 0.4 },
+    { frequency: 1046.5, at: 0.38, duration: 0.55, peak: 0.12 },
+  ]);
+const gameLastSound = () =>
+  chime([
+    { frequency: 196.0, at: 0, duration: 0.4, peak: 0.11 },
+    { frequency: 155.56, at: 0.18, duration: 0.48, peak: 0.1 },
+    { frequency: 130.81, at: 0.38, duration: 0.58, peak: 0.1 },
+  ]);
 
 const heartsBrokenSound = () => playSound(glassBreak);
 const queenSound = () => playSound(queenKnell);
@@ -147,6 +187,7 @@ async function newGame() {
   setBusy(true);
   selectedPass.clear();
   moonEffectRound = null;
+  gameEffectShown = false;
   hideHint();
   const seed = String(Math.floor(Math.random() * 2 ** 53));
   game = new WebGame(id('difficulty').value, '', seed);
@@ -330,6 +371,7 @@ function render(snapshot, trickOverride = null, winnerOverride = null) {
   renderActions(snapshot);
   renderLog(snapshot);
   renderShowdown(snapshot);
+  renderGameFeedback(snapshot);
   renderMoonFeedback(snapshot);
   // Outside `#actions`, which is wiped every frame: the offer has to survive
   // the bots' turns, so it lives in a node no render can destroy.
@@ -495,12 +537,18 @@ function renderShowdown(snapshot) {
   const rows = snapshot.score_sheet.map((totals, index) =>
     `<tr><th scope="row">${index + 1}</th>${totals.map((value) => `<td>${value}</td>`).join('')}</tr>`,
   ).join('');
+  const outcome = gameOutcome(snapshot);
   const winner = snapshot.game_over
-    ? `<div class="winner">${escapeHtml(winnerLine(snapshot.winners))}</div>`
+    ? `<div class="winner${outcome ? ` winner-${outcome}` : ''}">` +
+      `${escapeHtml(winnerLine(snapshot.winners))}</div>`
     : `<h2>Round ${snapshot.round_no}</h2>`;
+  const placement = outcome === 'last'
+    ? '<div class="placement-last">You finish fourth.</div>'
+    : '';
+  const sheetOutcome = outcome ? ` outcome-${outcome}` : '';
   const action = snapshot.game_over ? 'New game' : 'Continue';
   panel.innerHTML =
-    `<div class="showdown-sheet">${winner}${moon}` +
+    `<div class="showdown-sheet${sheetOutcome}">${winner}${placement}${moon}` +
     `<div class="round-result">${NAMES.map((name, seat) => `<span><b>${name}</b>${result[seat]} pts</span>`).join('')}</div>` +
     '<table><caption>Cumulative scores</caption><thead><tr><th>Round</th>' +
     NAMES.map((name) => `<th scope="col">${name}</th>`).join('') +
@@ -510,13 +558,78 @@ function renderShowdown(snapshot) {
   panel.hidden = false;
 }
 
+function gameOutcome(snapshot) {
+  if (!snapshot.game_over) return null;
+  if (snapshot.winners.includes('You')) return 'win';
+  const [yourScore, ...opponentScores] = snapshot.scores;
+  return opponentScores.every((score) => yourScore > score) ? 'last' : null;
+}
+
+function renderGameFeedback(snapshot) {
+  const outcome = gameOutcome(snapshot);
+  if (!outcome || gameEffectShown) return;
+
+  gameEffectShown = true;
+  playGameOutcomeSound(outcome);
+  launchGameOutcome(outcome);
+}
+
+function playGameOutcomeSound(outcome) {
+  if (outcome === 'win') gameWinSound();
+  else gameLastSound();
+}
+
+function launchGameOutcome(outcome) {
+  const layer = document.createElement('div');
+  layer.className = `game-burst game-burst-${outcome}`;
+  layer.setAttribute('aria-hidden', 'true'); // the showdown announces the outcome
+
+  const sheet = id('showdown').querySelector('.showdown-sheet');
+  sheet?.classList.add(`outcome-enter-${outcome}`);
+  if (outcome === 'win') buildGameWinBurst(layer);
+  else buildGameLastBurst(layer);
+
+  id('showdown').prepend(layer);
+  setTimeout(() => layer.remove(), 2200);
+}
+
+function buildGameWinBurst(layer) {
+  const glow = document.createElement('i');
+  glow.className = 'game-win-glow';
+  layer.appendChild(glow);
+
+  const suits = ['♥', '♦', '♣', '♠'];
+  const colours = ['#ff766f', '#69aef4', '#65ca91', '#ffe28a'];
+  for (let index = 0; index < 32; index++) {
+    const particle = document.createElement('i');
+    const angle = (index * 137.5) % 360;
+    const radians = angle * Math.PI / 180;
+    const distance = 180 + (index % 6) * 48;
+    particle.className = 'game-suit-particle';
+    particle.textContent = suits[index % suits.length];
+    particle.style.setProperty('--dx', `${Math.cos(radians) * distance}px`);
+    particle.style.setProperty('--dy', `${Math.sin(radians) * distance}px`);
+    particle.style.setProperty('--spin', `${angle + index * 18}deg`);
+    particle.style.setProperty('--particle-colour', colours[index % colours.length]);
+    particle.style.setProperty('--delay', `${(index % 5) * 0.035}s`);
+    layer.appendChild(particle);
+  }
+}
+
+function buildGameLastBurst(layer) {
+  const vignette = document.createElement('i');
+  vignette.className = 'game-last-vignette';
+  layer.appendChild(vignette);
+}
+
 // A moon is present only on a terminal snapshot. The showdown can be rendered
 // again while controls settle, so key the cue to the round rather than the
 // number of renders. Visuals still fire while muted, like the card stings.
 function renderMoonFeedback(snapshot) {
   if (
+    snapshot.game_over ||
     snapshot.moon == null ||
-    (!snapshot.round_over && !snapshot.game_over) ||
+    !snapshot.round_over ||
     moonEffectRound === snapshot.round_no
   ) return;
 

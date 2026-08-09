@@ -86,6 +86,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The cue fires once when the showdown first appears, respects the existing
   mute setting, keeps its visual channel while muted, and becomes a stationary
   fade under reduced-motion preferences.
+- Finishing a web game now has its own outcome feedback.  A sole or shared win
+  gets a gold glow, a burst of card-suit particles, and a short synthesized
+  fanfare; only a sole fourth place gets a darkened vignette, a restrained
+  score-sheet drop, an explicit placement line, and a descending sting.
+  Second, third, and tied-last finishes stay neutral.  Game feedback takes
+  precedence over a moon cue on the final round, remains visual while muted,
+  and reduces to stationary colour under reduced-motion preferences.
 - Offer to end a round early once all 26 points are captured.  The web UI
   shows an "End round" button and the terminal `play` example asks before the
   next human play, both jumping straight to the round result.  The leftover
