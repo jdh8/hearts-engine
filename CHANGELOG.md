@@ -333,6 +333,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **The decision-conditional moon bar was refuted and ships no behavior
+  change.**  The originally proposed same-sample inequality reduced
+  algebraically to the equity comparison `beats` already enforces, so the
+  tested arm estimated its `[0.35, 0.65]` threshold on the primary worlds
+  and checked completion on a fresh independent batch.  It was live in both
+  directions, byte-identical across serial/parallel builds, and passed the
+  latency gate.  The 2,000-block seed-0 screen advanced on
+  `win +0.0057 ± 0.0017`, `moons +0.0106 ± 0.0015`, and positive `rank`.
+  At 6,000 fresh seed-1 blocks it kept `win +0.0056 ± 0.0010` and
+  `moons +0.0105 ± 0.0009`, but `rank +0.0000 ± 0.0026` failed the +2-SE
+  ship gate; over 2,000 paired games, `rank −0.0033 ± 0.0087` and
+  `not-last −0.0062 ± 0.0025` confirmed the cost despite
+  `moons +0.0150 ± 0.0008`.  Completion per attempt was 68.2% in deals and
+  74.4% in games, so this was not the old gate-alone pathology: more wins
+  and moons simply traded away aggregate placement.  Strict majority is
+  restored, and the threshold, fresh worlds, counters and arena knob are
+  all removed.
 - **Shape-aware shoot passes were refuted at confirmation and ship no
   behavior change.**  A deterministic 4,096-hand probe established that
   both new lines were selectable.  In the 2,000-block seed-0 screen,

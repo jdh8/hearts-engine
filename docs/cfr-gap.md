@@ -1,11 +1,11 @@
 # Closing the Deep CFR gap — the moon campaign
 
 **Status: OPEN (2026-08-10).**  P0's instrumentation has landed while
-its live smoke/baseline remains in flight; P1, consumed from
-[passing-shape.md](passing-shape.md)'s P3, was refuted at confirmation
-and shipped no change; P2 is next.  Siblings: passing-shape.md (owns
-P1's mechanism) and [passing-opponent-model.md](passing-opponent-model.md)
-(whose parked P6 is the nearest relative of this doc's P4).
+its live smoke/baseline remains in flight; P1 and P2 were refuted at
+confirmation and shipped no change; P3 is next.  Siblings:
+[passing-shape.md](passing-shape.md) (owns P1's mechanism) and
+[passing-opponent-model.md](passing-opponent-model.md) (whose parked P6
+is the nearest relative of this doc's P4).
 
 ## Goal and non-goals
 
@@ -97,8 +97,9 @@ record cannot answer: how many moons we *attempted* and lost
 (completions are the only moon signal the harness keeps), whether the
 moons we concede are fed by our own passes, whether our defense engages
 late, and which deals carry the ordinary-play residue.  Those four
-questions gate P4, P5, and P2's tournament verdict, and every one of
-them is a harness deficiency, not an engine one.  Hence P0.
+questions gate P4, P5, and the campaign's next tournament verdict, and
+every one of them is a harness deficiency, not an engine one.  Hence
+P0.
 
 ## Measured priors this doc must respect
 
@@ -107,6 +108,7 @@ them is a harness deficiency, not an engine one.  Hence P0.
 | shoot machinery, both bars | arena moons 36 → 85 per 4000 | attempts pay only behind both bars |
 | gate alone, no majority bar | 2-in-5 attempts, 1-in-20 landed | the paired gate cannot price bimodal tails |
 | flat 45% majority bar | `win` +1.6 SE only, `rank` flat | uniform loosening is dead |
+| independent conditional moon bar | deal `rank +0.0000 ± 0.0026`; game `−0.0033 ± 0.0087` | more moons and wins traded away aggregate placement |
 | eight-point rollout defense | `win +0.0033 ± 0.0006` (5.9 SE) | defender realism in shoot worlds pays |
 | ordinary-world sweeper symmetry | null, moons −1.6 SE | `shooter == None` worlds stay greedy |
 | opponent-moon rollout model | `rank −0.0256 ± 0.0073` vs greedy | worlds must not out-inform the field |
@@ -116,12 +118,14 @@ them is a harness deficiency, not an engine one.  Hence P0.
 | `two_of_clubs_bonus` MC leg | null except moons +2.5/3.3 SE | pass shape reaches the moon column |
 | shape-aware shoot passes | `rank −0.0054 ± 0.0024` at confirm | local shape did not improve attempt quality |
 
-The first three define the design space for anything touching attempt
-selection: the double bar is load-bearing, and only a *shaped* revision
-of it (P2) is admissible, never a flat one.  The middle four wall off
-rollout-world opponent modeling.  The last two say the moon column
-moves under changes aimed elsewhere — every arena A/B in this campaign
-reads `moons` alongside `rank` whether or not moons are the target.
+The first four define the design space for anything touching attempt
+selection: the double bar is load-bearing, and both flat and
+decision-conditioned loosening are now dead.  A future revision needs
+new evidence or a new mechanism, not another threshold shape.  The
+middle four wall off rollout-world opponent modeling.  The last two say
+the moon column moves under changes aimed elsewhere — every arena A/B
+in this campaign reads `moons` alongside `rank` whether or not moons are
+the target.
 
 ## Where the moon machinery lives today
 
@@ -243,64 +247,51 @@ surviving campaign, not a price for P1.
 
 ### P2 — decision-conditional moon bar
 
-**Status: NEXT (2026-08-10).**
+**Status: REFUTED AT CONFIRM (2026-08-10); strict majority restored.**
 
-**The open question in the current rule.**  The strict majority encodes
-one global indifference point, computed from three mid-game constants:
-moon 0.732, failed shot 0.423, greedy 0.577 — `p* ≈ 0.498`, so "require
-a majority" is exactly right *on average*.  But the same rollout sample
-that produces the moon count already contains the per-decision versions
-of all three numbers, free: the shoot candidate's per-world equities
-split into completed and failed subsets, and the incumbent's mean is
-the greedy line's worth *at this decision*.  The flat bar refuses
-exactly the positions a learned policy takes: late-round shots where
-the failure line is already poisoned (`E_fail ≈ E_greedy`, points
-taken either way), and game-ending standings where the terminal
-matchpoints branch makes a completed moon flip a sole win — the
-equities see it, the constant cannot.
+**Design correction.**  The proposed same-sample formula was
+tautological.  For observed moon rate `p`, the shoot mean is
+`p·E_moon + (1−p)·E_fail`, so its proposed inequality is exactly
+`E_shoot > E_greedy` whenever `E_moon > E_fail` — already guaranteed by
+the stronger `beats` gate.  After clamping, only the 0.35 floor could
+filter anything; the 0.65 ceiling could not.  The experiment therefore
+made the second bar independent: primary rollouts estimated the
+threshold, then any shoot candidate that cleared `beats` received one
+fresh base-width batch whose plain Bernoulli completion rate had to
+clear it.  The predeclared 8/8 subset guard, `[0.35, 0.65]` clamp and
+strict comparison stayed fixed.
 
-**Mechanism.**  Require
+**The arm was live and cheap.**  In the 2,000-block seed-0 screen it
+calibrated below ½ on 0.1824 decisions/round and above ½ on 0.0105,
+falling back on 0.1233 and validating 0.3161.  It advanced with
+`rank +0.0008 ± 0.0044`, `win +0.0057 ± 0.0017`,
+`not-last −0.0052 ± 0.0015`, `points +0.1095 ± 0.0587`, and
+`moons +0.0106 ± 0.0015`.  Attempts rose by 0.0234/round but completed
+at 67.7%, nowhere near the gate-alone pathology.  Repeated 500-block
+throughput on seeds 0/1/2 was 283/280, 240/271 and 266/271 rounds/s for
+majority/conditional; aggregate time favored the candidate by 4.5%.
+A 200-block seed-7 CSV was byte-identical between serial and parallel
+builds, and the unchanged majority arm reproduced its pre-change
+200-block CSV byte for byte.
 
-```text
-moons/n > (E_greedy − E_fail) / (E_moon − E_fail)
-```
-
-with `E_moon`/`E_fail` the shoot candidate's mean equity over its
-completed/failed worlds and `E_greedy` the incumbent's mean over the
-same worlds.  Guards: minimum subset counts (≈ 8 worlds each side),
-the bar clamped to `[0.35, 0.65]`, strict-majority fallback when
-degenerate.  The paired `beats` gate stays untouched in front.  One
-accounting change: `score_worlds` keeps a moon *count* per candidate;
-splitting the equity means also accumulating the moon-world equity sum
-alongside it — still no new statistics, one running sum.  `recommended`
-serves `assess` too, so hint views inherit the same bar.
-
-**Coupling.**  Selection rule only; candidates, worlds, and the latch
-are untouched.  The `parallel` feature's bit-identity is preserved —
-the new sum reduces in world order like everything else.
-
-**Why this is not the 45% null.**  That test moved the constant,
-uniformly, for every decision — and measured nothing.  This bar is
-conditional and two-directional: it *tightens* where a failed shot is
-expensive and loosens only where the same arithmetic that justified the
-strict majority says the indifference genuinely sits lower.  If in
-practice the conditional bar collapses to ≈ ½ everywhere, that is the
-kill criterion's dead-code arm, and the null inherits the clamp bounds.
-
-**Measurement.**  Screen 2,000 blocks on `moons` and `rank`, confirm
-6,000, `win` the ship gate; watch `points` for the two-attempts-in-five
-pathology the gate-alone experiment recorded (over two points a round).
-Games mode matters here more than usual — the terminal-standings case
-is where the conditional bar diverges most — so the confirm includes a
-games-mode leg.
-
-**Kill criterion.**  `rank`/`win` non-positive at confirm; or the
-attempt rate rises while `points` echoes the recorded pathology; or the
-bar measurably never leaves ½.  Revert and record the bounds tried.
+**Confirmation and verdict.**  On 6,000 fresh seed-1 deal blocks the
+candidate kept the win and moon signal — `win +0.0056 ± 0.0010`,
+`moons +0.0105 ± 0.0009`, `points +0.0591 ± 0.0346` — but produced
+`rank +0.0000 ± 0.0026` and `not-last −0.0060 ± 0.0009`.  The required
++2-SE rank gate failed; attempts rose by 0.0248/round and completed at
+68.2%.  The predeclared 2,000-game leg made the trade clearer:
+`points +0.1059 ± 0.0302`, `win +0.0061 ± 0.0052`, and
+`moons +0.0150 ± 0.0008`, against `rank −0.0033 ± 0.0087` and
+`not-last −0.0062 ± 0.0025`.  Game attempts rose by 0.0286/round and
+completed at 74.4%; this was not reckless shooting, just more wins and
+moons bought with worse aggregate placement.  Both rank gates failed,
+so the conditional bar, its fresh worlds, counters, arena knob and all
+configuration were deleted.  The measured strict majority remains the
+sole rule.
 
 ### P3 — a second shoot line: flush before cashing
 
-**Status: QUEUED, after P2.  Ranked low.**
+**Status: NEXT (2026-08-10).  Ranked low.**
 
 **Mechanism.**  `shoot_play` opens every shot the same way: cash the
 highest card.  Some moon hands want the opposite — a long suit headed
@@ -312,10 +303,10 @@ un-latching — the three-overrides-in-ten measurement stands, and a
 bail-out policy would re-tread it in miniature.
 
 **Why ranked low.**  Second-order: it widens the set of hands whose
-best line can clear the bar at all, but P1 changes which hands arrive
-and P2 changes what clears, so its marginal value is unknowable until
-both settle.  It also doubles the most expensive candidate's rollout
-cost whenever both lines survive elimination.
+best line can clear the existing strict-majority bar at all, after both
+the pass-shape and conditional-bar attempts failed to improve strength.
+It also doubles the most expensive candidate's rollout cost whenever
+both lines survive elimination.
 
 **Measurement.**  Screen 2,000 on `moons` + `rank`, confirm 6,000,
 `win` gate, plus a full-round arena throughput gate — the passing-shape
@@ -384,20 +375,21 @@ argument later.
 ## Sequencing and the deletion ledger
 
 P0's instrumentation has landed; its instrumented 1,600-deal baseline
-rerun remains outstanding.  P1 closed without a behavior change after
-joint was refuted at confirmation, so P2 is next, followed by P3, each
-in its own arena window and never concurrent with the sibling docs'
-campaigns.  P4/P5 remain conditional on their own rerun evidence.  The
+rerun remains outstanding.  P1 and P2 both closed without behavior
+changes after confirmation refuted them, so P3 is next, in its own
+arena window and never concurrent with the sibling docs' campaigns.
+P4/P5 remain conditional on their own rerun evidence.  The
 campaign closes when a rerun's headline is inside 2 SE of zero,
 confirmed once on a fresh seed — or when the remaining proposals are all
 measured nulls, in which case the honest close is "the residue is not
 moons, and the next campaign is ordinary card play."
 
-Ledger: the counters and CSV are instrumentation and stay; P2's clamp
-constants and P3's second line are deletable on their kill criteria;
-the journald checkpoint trail stops being load-bearing the day the
-first CSV run lands, and this doc's checkpoint table becomes the only
-place it survives.
+Ledger: the P0 counters and CSV are instrumentation and stay; P2's
+clamp constants and validation path were deleted on their kill
+criterion; P3's second line remains deletable on its own.  The journald
+checkpoint trail stops being load-bearing the day the first CSV run
+lands, and this doc's checkpoint table becomes the only place it
+survives.
 
 ## Interactions with the sibling docs
 
