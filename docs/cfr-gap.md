@@ -2,7 +2,8 @@
 
 **Status: OPEN (2026-08-10).**  P0's instrumentation has landed while
 its live smoke/baseline remains in flight; P1 and P2 were refuted at
-confirmation and shipped no change; P3 is next.  Siblings:
+confirmation and P3 at screen, all shipping no behavior change.  P4
+and P5 remain parked on P0's data.  Siblings:
 [passing-shape.md](passing-shape.md) (owns P1's mechanism) and
 [passing-opponent-model.md](passing-opponent-model.md) (whose parked P6
 is the nearest relative of this doc's P4).
@@ -117,15 +118,16 @@ P0.
 | point-aware greedy play | `rank +0.036`, moons −0.39 pp | strength can trade against moon rate |
 | `two_of_clubs_bonus` MC leg | null except moons +2.5/3.3 SE | pass shape reaches the moon column |
 | shape-aware shoot passes | `rank −0.0054 ± 0.0024` at confirm | local shape did not improve attempt quality |
+| flush-before-cash shoot line | `rank −0.0058 ± 0.0022` at screen | a live alternative line reduced both strength and moons |
 
 The first four define the design space for anything touching attempt
 selection: the double bar is load-bearing, and both flat and
 decision-conditioned loosening are now dead.  A future revision needs
-new evidence or a new mechanism, not another threshold shape.  The
-middle four wall off rollout-world opponent modeling.  The last two say
-the moon column moves under changes aimed elsewhere — every arena A/B
-in this campaign reads `moons` alongside `rank` whether or not moons are
-the target.
+new evidence or a new mechanism, not another threshold shape.  The next
+four wall off rollout-world opponent modeling.  The pass and ordinary-play
+rows show why every arena A/B in this campaign reads `moons` alongside
+`rank` even when moons are not the target; the final row closes the simple
+second-line bet itself.
 
 ## Where the moon machinery lives today
 
@@ -291,31 +293,32 @@ sole rule.
 
 ### P3 — a second shoot line: flush before cashing
 
-**Status: NEXT (2026-08-10).  Ranked low.**
+**Status: REFUTED AT SCREEN (2026-08-10); cash-only restored.**
 
-**Mechanism.**  `shoot_play` opens every shot the same way: cash the
-highest card.  Some moon hands want the opposite — a long suit headed
-A-K-Q with a stopper out prefers to lead *low*, flushing the stopper
-while entries remain.  Add exactly one alternative shoot candidate at
-the same insertion point, behind the same `alive` gate; the latch
-records which line was chosen and replays it.  No re-deciding and no
-un-latching — the three-overrides-in-ten measurement stands, and a
-bail-out policy would re-tread it in miniature.
+**Mechanism tested.**  A private `Cash`/`Flush` line replaced the
+shooting boolean through candidates, rollouts and the live latch.  Cash
+was the shipped policy.  Flush led the lowest legal rank, ties in
+`Suit::ASC`, and otherwise delegated exactly to cash; both lines stayed
+distinct even when their immediate play matched because their latched
+continuations differed.  They sat together past `MAX_CANDIDATES`,
+behind the same `alive` gate, 1.5-SE paired gate and strict-majority
+completion bar.  Shoot passes remained cash-only.
 
-**Why ranked low.**  Second-order: it widens the set of hands whose
-best line can clear the existing strict-majority bar at all, after both
-the pass-shape and conditional-bar attempts failed to improve strength.
-It also doubles the most expensive candidate's rollout cost whenever
-both lines survive elimination.
+**Liveness and determinism.**  A deterministic 4,096-deal probe rotated
+the measured `mc:128` seat and selected flush 12 times among 264 total
+attempts, completing 10 of those flush shots.  The line was rare but
+live.  Serial and `parallel` candidate builds produced byte-identical
+200-block seed-7 CSVs (SHA-256 prefix `134cd6d05cfe`).
 
-**Measurement.**  Screen 2,000 on `moons` + `rank`, confirm 6,000,
-`win` gate, plus a full-round arena throughput gate — the passing-shape
-campaign's lesson that an isolated bench delta is not a latency result
-applies with force to a candidate the significance gate may extend.
-
-**Kill criterion.**  The second line is never chosen, or chosen without
-`moons` moving at screen — dead code, revert.  `rank`/`win` negative at
-confirm — revert.
+**Screen and verdict.**  Against the saved cash-only executable over
+2,000 paired seed-0 blocks, flush moved `points −0.0308 ± 0.0222`,
+`win −0.0016 ± 0.0009`, `not-last −0.0015 ± 0.0008`,
+`rank −0.0058 ± 0.0022`, and completed `moons −0.0001 ± 0.0005`.
+Both predeclared screen signs — positive `rank` and positive `moons` —
+failed, with rank negative by 2.7 SE.  The arm therefore did not reach
+the throughput or fresh-seed confirmation gates.  The line enum,
+candidate, latch changes, tests and probe were deleted; the engine is
+byte-for-byte back to the cash-only source.
 
 ### P4 — anti-moon passing
 
@@ -375,9 +378,8 @@ argument later.
 ## Sequencing and the deletion ledger
 
 P0's instrumentation has landed; its instrumented 1,600-deal baseline
-rerun remains outstanding.  P1 and P2 both closed without behavior
-changes after confirmation refuted them, so P3 is next, in its own
-arena window and never concurrent with the sibling docs' campaigns.
+rerun remains outstanding.  P1 and P2 closed without behavior changes
+at confirmation and P3 at screen, each in its own arena window.
 P4/P5 remain conditional on their own rerun evidence.  The
 campaign closes when a rerun's headline is inside 2 SE of zero,
 confirmed once on a fresh seed — or when the remaining proposals are all
@@ -385,11 +387,10 @@ measured nulls, in which case the honest close is "the residue is not
 moons, and the next campaign is ordinary card play."
 
 Ledger: the P0 counters and CSV are instrumentation and stay; P2's
-clamp constants and validation path were deleted on their kill
-criterion; P3's second line remains deletable on its own.  The journald
-checkpoint trail stops being load-bearing the day the first CSV run
-lands, and this doc's checkpoint table becomes the only place it
-survives.
+clamp constants and validation path and P3's second line were deleted
+on their kill criteria.  The journald checkpoint trail stops being
+load-bearing the day the first CSV run lands, and this doc's checkpoint
+table becomes the only place it survives.
 
 ## Interactions with the sibling docs
 

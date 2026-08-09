@@ -333,6 +333,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **The flush-before-cash shoot line was refuted at screen and ships no
+  behavior change.**  A private second moon line led the lowest legal rank
+  whenever it held the lead, then carried that policy through the same latch,
+  rollout defense, 1.5-SE gate and strict-majority bar as the cash-high line;
+  shoot passes stayed cash-only.  A deterministic 4,096-deal probe selected
+  it 12 times among 264 total attempts and completed 10, so it was rare but
+  live.  Against the saved cash-only executable over 2,000 paired seed-0
+  blocks it moved `points −0.0308 ± 0.0222`, `win −0.0016 ± 0.0009`,
+  `not-last −0.0015 ± 0.0008`, `rank −0.0058 ± 0.0022`, and completed
+  `moons −0.0001 ± 0.0005`; both required screen signs failed, with rank
+  negative by 2.7 SE.  Serial and parallel 200-block seed-7 CSVs were
+  byte-identical.  No throughput or confirmation leg was owed; the line,
+  latch changes, probe and tests are all removed, restoring the cash-only
+  source byte for byte.
 - **The decision-conditional moon bar was refuted and ships no behavior
   change.**  The originally proposed same-sample inequality reduced
   algebraically to the equity comparison `beats` already enforces, so the
