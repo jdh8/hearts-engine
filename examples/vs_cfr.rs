@@ -4,6 +4,7 @@
 //! ```console
 //! cargo run --release --example vs_cfr -- --deals 4 --throttle-ms 500
 //! cargo run --release --example vs_cfr -- --deals 10000 --throttle-ms 0 \
+//!     --csv results.csv \
 //!     --shim "dotnet tournament/CfrShim/bin/Release/net10.0/CfrShim.dll http://localhost:8080"
 //! ```
 //!
@@ -13,6 +14,8 @@
 //! `mean(others' points) − own points`.  The headline number is the CFR
 //! side's mean payoff per seat-deal with a paired standard error; positive
 //! means Deep CFR beats the Monte Carlo bot.
+//! `--csv PATH` also checkpoints one row per deal-seating for post-hoc
+//! decomposition.
 //!
 //! Every shim reply carries Brian's legal-action set, which is checked
 //! against ours on every decision, so any rules drift between the two
@@ -24,9 +27,12 @@ use hearts_engine::{MonteCarloBot, Strategy, Table, View};
 use rand::SeedableRng as _;
 use rand::rngs::StdRng;
 use std::fmt::Write as _;
-use std::io::{BufRead as _, BufReader, Write as _};
+use std::fs::File;
+use std::io::{BufRead as _, BufReader, BufWriter, Write as _};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::{Duration, Instant};
+
+const BOT_RNG_SALT: u64 = 0xC6BC_2796_92B5_C323;
 
 /// Two-character card code shared with the shim, e.g. `QS`.
 fn code(card: Card) -> String {
@@ -192,12 +198,14 @@ struct Config {
     samples: u32,
     throttle: Duration,
     shim: Vec<String>,
+    csv: Option<String>,
 }
 
 fn usage() {
     println!(
-        "Usage: vs_cfr [--deals N] [--seed N] [--samples N] [--throttle-ms N] [--shim CMD]\n\
+        "Usage: vs_cfr [--deals N] [--seed N] [--samples N] [--throttle-ms N] [--csv PATH] [--shim CMD]\n\
          N deals must be even (each deal is replayed with sides swapped).\n\
+         --csv PATH writes one row per deal-seating and flushes after each pair.\n\
          CMD defaults to \"dotnet tournament/CfrShim/bin/Release/net10.0/CfrShim.dll\";\n\
          append an endpoint URL to CMD to use a local Hearts.Web harness."
     );
@@ -214,6 +222,7 @@ fn parse_args() -> Result<Option<Config>> {
         samples: 128,
         throttle: Duration::from_millis(500),
         shim: vec!["dotnet".into(), shim_dll.into()],
+        csv: None,
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -223,6 +232,7 @@ fn parse_args() -> Result<Option<Config>> {
             "--seed" => config.seed = value()?.parse()?,
             "--samples" => config.samples = value()?.parse()?,
             "--throttle-ms" => config.throttle = Duration::from_millis(value()?.parse()?),
+            "--csv" => config.csv = Some(value()?),
             "--shim" => config.shim = value()?.split_whitespace().map(String::from).collect(),
             "--help" | "-h" => return Ok(None),
             other => bail!("unknown flag {other:?}"),
@@ -234,6 +244,20 @@ fn parse_args() -> Result<Option<Config>> {
     );
     ensure!(!config.shim.is_empty(), "--shim must not be empty");
     Ok(Some(config))
+}
+
+/// The source revision under test, when this is run from a Git checkout.
+fn git_revision() -> String {
+    Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|revision| revision.trim().to_owned())
+        .filter(|revision| !revision.is_empty())
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 /// Brian's zero-sum payoff: mean of the other players' points minus own.
@@ -250,6 +274,8 @@ fn report(
     pair_payoffs: &[f64],
     points: [u64; 2],
     moons: [u32; 2],
+    mc_attempts: u64,
+    mc_passes: u64,
     samples: u32,
     elapsed: Duration,
 ) -> String {
@@ -263,7 +289,8 @@ fn report(
         "{deals} deals ({} pairs) in {elapsed:.1?}\n\
          deep-cfr payoff per seat-deal: {mean:+.3} ± {se:.3} (paired SE; positive favors CFR)\n\
          penalty points per deal (moon-adjusted): deep-cfr {:.2}, mc:{samples} {:.2}\n\
-         moons: mc {} / cfr {}",
+         moons: mc {} / cfr {}\n\
+         mc moon attempts: {mc_attempts} (shoot passes chosen: {mc_passes})",
         pair_payoffs.len(),
         points[1] as f64 / d,
         points[0] as f64 / d,
@@ -277,12 +304,28 @@ fn main() -> Result<()> {
         usage();
         return Ok(());
     };
+    let revision = git_revision();
+    let context = format!(
+        "vs_cfr {revision} seed={} samples={} throttle_ms={} shim={}",
+        config.seed,
+        config.samples,
+        config.throttle.as_millis(),
+        config.shim.join(" "),
+    );
+    eprintln!("{context}");
+    let mut csv = if let Some(path) = &config.csv {
+        let file = File::create(path).with_context(|| format!("failed to create CSV {path:?}"))?;
+        let mut csv = BufWriter::new(file);
+        writeln!(csv, "# {context}")?;
+        writeln!(
+            csv,
+            "pair,seating,direction,deal_seed,cfr_seats,north,east,south,west,shooter,shooter_side,mc_attempts,mc_passes,cfr_payoff"
+        )?;
+        Some(csv)
+    } else {
+        None
+    };
     let rules = Rules::new();
-    let mut seed_rng = StdRng::seed_from_u64(config.seed);
-    let mut mc: [MonteCarloBot<StdRng>; 2] = std::array::from_fn(|_| {
-        MonteCarloBot::new(StdRng::from_rng(&mut seed_rng)).samples(config.samples)
-    });
-    let [mc0, mc1] = &mut mc;
     let mut cfr0 = CfrBot::spawn(&config.shim, config.throttle)?;
     let mut cfr1 = CfrBot::spawn(&config.shim, config.throttle)?;
 
@@ -290,26 +333,56 @@ fn main() -> Result<()> {
     let mut pair_payoffs = Vec::with_capacity(pairs as usize);
     let mut points = [0u64; 2]; // [mc, cfr], moon-adjusted like Brian's
     let mut moons = [0u32; 2];
+    let mut mc_attempts = 0u64;
+    let mut mc_passes = 0u64;
     let start = Instant::now();
 
     for pair in 0..pairs {
         let direction = PassDirection::from_deal_index(pair);
         let deal_seed = config.seed ^ u64::from(pair).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let mut bot_rng = StdRng::seed_from_u64(deal_seed ^ BOT_RNG_SALT);
+        let mut mc: [MonteCarloBot<StdRng>; 2] = std::array::from_fn(|_| {
+            MonteCarloBot::new(StdRng::from_rng(&mut bot_rng)).samples(config.samples)
+        });
         let mut payoff_sum = 0.0;
 
         // Seating 0: CFR at East and West; seating 1: CFR at North and South.
         for seating in 0..2 {
             let mut rng = StdRng::seed_from_u64(deal_seed);
             let mut table = Table::deal(rules, direction, &mut rng);
-            let strategies: [&mut dyn Strategy; 4] = if seating == 0 {
-                [mc0, &mut cfr0, mc1, &mut cfr1]
-            } else {
-                [&mut cfr0, mc0, &mut cfr1, mc1]
+            let attempts_before = mc
+                .iter()
+                .map(|bot| u64::from(bot.moon_attempts()))
+                .sum::<u64>();
+            let passes_before = mc
+                .iter()
+                .map(|bot| u64::from(bot.moon_passes()))
+                .sum::<u64>();
+            let result = {
+                let [mc0, mc1] = &mut mc;
+                let strategies: [&mut dyn Strategy; 4] = if seating == 0 {
+                    [mc0, &mut cfr0, mc1, &mut cfr1]
+                } else {
+                    [&mut cfr0, mc0, &mut cfr1, mc1]
+                };
+                table.play(strategies)?
             };
-            let result = table.play(strategies)?;
+            let attempts_delta = mc
+                .iter()
+                .map(|bot| u64::from(bot.moon_attempts()))
+                .sum::<u64>()
+                - attempts_before;
+            let passes_delta = mc
+                .iter()
+                .map(|bot| u64::from(bot.moon_passes()))
+                .sum::<u64>()
+                - passes_before;
+            mc_attempts += attempts_delta;
+            mc_passes += passes_delta;
             let scores = result.scores(&rules);
             let cfr_seats = if seating == 0 { [1, 3] } else { [0, 2] };
             let payoff = payoffs(scores);
+            let cfr_payoff = (payoff[cfr_seats[0]] + payoff[cfr_seats[1]]) / 2.0;
             for (seat, &score) in scores.iter().enumerate() {
                 let is_cfr = cfr_seats.contains(&seat);
                 points[usize::from(is_cfr)] += u64::from(score);
@@ -317,12 +390,37 @@ fn main() -> Result<()> {
                     payoff_sum += payoff[seat];
                 }
             }
-            if let Some(shooter) = result.shooter() {
+            let shooter = result.shooter();
+            if let Some(shooter) = shooter {
                 let is_cfr = cfr_seats.contains(&(shooter as usize));
                 moons[usize::from(is_cfr)] += 1;
             }
+            if let Some(csv) = &mut csv {
+                let shooter_name =
+                    shooter.map_or_else(String::new, |seat| seat.letter().to_string());
+                let shooter_side = shooter.map_or("", |seat| {
+                    if cfr_seats.contains(&(seat as usize)) {
+                        "cfr"
+                    } else {
+                        "mc"
+                    }
+                });
+                writeln!(
+                    csv,
+                    "{pair},{seating},{},{deal_seed},{},{},{},{},{},{shooter_name},{shooter_side},{attempts_delta},{passes_delta},{cfr_payoff:.6}",
+                    direction_json(direction),
+                    if seating == 0 { "EW" } else { "NS" },
+                    scores[0],
+                    scores[1],
+                    scores[2],
+                    scores[3],
+                )?;
+            }
         }
         pair_payoffs.push(payoff_sum / 4.0);
+        if let Some(csv) = &mut csv {
+            csv.flush()?;
+        }
         if (pair + 1).is_multiple_of(20) {
             eprintln!(
                 "\n[checkpoint {}/{pairs} pairs]\n{}",
@@ -331,6 +429,8 @@ fn main() -> Result<()> {
                     &pair_payoffs,
                     points,
                     moons,
+                    mc_attempts,
+                    mc_passes,
                     config.samples,
                     start.elapsed()
                 ),
@@ -340,11 +440,13 @@ fn main() -> Result<()> {
     }
     eprintln!();
     println!(
-        "{}",
+        "{context}\n{}",
         report(
             &pair_payoffs,
             points,
             moons,
+            mc_attempts,
+            mc_passes,
             config.samples,
             start.elapsed()
         ),

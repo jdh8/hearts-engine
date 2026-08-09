@@ -42,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bonuses' 100/90/80 tier stays fixed because it is quasi-lexicographic —
   its internal order is forced and it only competes with rank-scale terms
   after a ~3× drop.
+- `MonteCarloBot::moon_attempts` and `MonteCarloBot::moon_passes`:
+  lifetime-monotone counters of shoot plans latched at play time and of
+  shoot-shaped passes chosen, with `const` getters; callers diff them
+  around whatever interval they measure.  No decision path reads them.
+  They exist because the attempt/completion ratio the shoot feature was
+  tuned on was invisible outside the arena — the CFR tournament harness
+  counted completed moons only, so a failed shot and a never-attempted
+  one were indistinguishable in its record.
 - `MonteCarloBot` can now shoot the moon.  Every decision carries one extra
   candidate rolled with the deciding seat shooting — cash the highest card
   when leading, top the led suit when that wins, shed the cheapest
@@ -325,6 +333,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **`vs_cfr` now records what the rerun below could not.**  `--csv PATH`
+  writes one row per deal-seating — pair, seating, pass direction,
+  `deal_seed`, CFR seats, the four raw seat scores, shooter seat and
+  side, the mc bots' per-seating moon-attempt and shoot-pass deltas, and
+  the seating's mean CFR seat payoff — flushed after every pair, so a
+  dropped multi-hour run keeps its prefix.  The launch line, final
+  report and CSV header all carry provenance (git revision, seed,
+  samples, throttle, shim command); the report gains a moon-attempt
+  tally.  The two Monte Carlo bots are now rebuilt each pair from the
+  salted deal seed, so any single pair replays in isolation — the old
+  harness threaded one RNG stream through the whole run, making pair
+  *k* unreachable without replaying `0..k`.  This changes the harness's
+  decisions relative to the recorded runs, which is fine: cross-run
+  pairing is by deal, and the deals are unchanged.
+- **The Deep CFR rerun: the gap is cut 43 % and is still mostly moons.**
+  The second 800-deal tournament against brianberns' live server
+  (2026-08-09, seed 1, 100 ms throttle, commit `2405636`, same 2v2
+  duplicate methodology and Q♠ normalization caveat as the first):
+  Deep CFR wins `+0.727 ± 0.202` payoff per seat-deal, down from
+  `+1.283 ± 0.212` on 2026-07-18; penalty points per deal 15.32 vs our
+  17.50; completed moons 81 vs our 24, against 142 vs 8 before the moon
+  work.  The payoff identity `(mc − cfr points)/3` reproduces both
+  headlines exactly, and the net completed-moon differential of 57 at
+  `0.0108` payoff each accounts for up to ~85 % of what remains — the
+  ordinary-play residue is a few tenths of a point.  Both runs are seed
+  1 and therefore paired card for card, but neither stored per-deal
+  rows; the only within-run record is the 20-pair stderr checkpoint
+  trail, which is the deficiency the harness instrumentation above
+  removes before the next run.
+- **`docs/cfr-gap.md` opens the moon campaign.**  Rerun analysis (the
+  payoff identity, the moon attribution and its over-attribution
+  caveat), the priors table walling off the five measured nulls, and
+  the queue: P0 tournament instrumentation, P1 consuming
+  `passing-shape.md`'s shape-aware shoot passes, P2 a
+  decision-conditional moon bar replacing the flat strict majority with
+  the per-decision indifference point computed from the same rollouts,
+  P3 a second shoot line, P4 anti-moon passing and P5 an earlier live
+  defense trigger both parked on P0's decomposition.  The next-run
+  protocol standardizes on 1,600 deals (`SE ≈ ±0.14`), seed 1 for
+  card-for-card pairing with the recorded runs, and a fresh-seed
+  confirmation before any claim of closure.
 - **Spade-void and double-void pass candidates are a screen null.**  Three
   disjoint `mc:128` pool arms faced the shipped pool over the same 2,000
   seed-0 paired blocks: spade-emptying candidates moved `rank −0.0003 ±

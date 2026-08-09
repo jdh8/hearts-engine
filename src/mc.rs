@@ -128,6 +128,8 @@ pub struct MonteCarloBot<R: Rng> {
     /// Whether a moon attempt is under way, carried across the tricks of
     /// one round so the search does not re-litigate it every turn.
     shooting: bool,
+    moon_attempts: u32,
+    moon_passes: u32,
 }
 
 /// One candidate action's Monte Carlo assessment, for a solver or hint view
@@ -170,6 +172,8 @@ impl<R: Rng> MonteCarloBot<R> {
             gate: 1.5,
             pass_model: HeuristicConfig::new(),
             shooting: false,
+            moon_attempts: 0,
+            moon_passes: 0,
         }
     }
 
@@ -217,6 +221,22 @@ impl<R: Rng> MonteCarloBot<R> {
     pub const fn pass_model(mut self, config: HeuristicConfig) -> Self {
         self.pass_model = config;
         self
+    }
+
+    /// How many shoot-the-moon plans this bot has begun
+    ///
+    /// The count is lifetime-monotone across rounds; callers can diff it
+    /// before and after any interval they want to measure.
+    pub const fn moon_attempts(&self) -> u32 {
+        self.moon_attempts
+    }
+
+    /// How many shoot-shaped passes this bot has chosen
+    ///
+    /// The count is lifetime-monotone across rounds; callers can diff it
+    /// before and after any interval they want to measure.
+    pub const fn moon_passes(&self) -> u32 {
+        self.moon_passes
     }
 
     /// Sample one set of current hidden hands consistent with the view, by
@@ -377,7 +397,11 @@ impl<R: Rng> MonteCarloBot<R> {
     /// clears the significance gate
     fn choose(&mut self, view: &View<'_>, candidates: &[Candidate]) -> Choice {
         let scored = self.score(view, candidates);
-        candidates[recommended(&scored, candidates, self.gate)].choice
+        let best = recommended(&scored, candidates, self.gate);
+        if candidates[best].shoot {
+            self.moon_passes += 1;
+        }
+        candidates[best].choice
     }
 
     /// Score one decision, extending only an unresolved incumbent/challenger
@@ -910,6 +934,9 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
         }
         let scored = self.score(view, &candidates);
         let best = recommended(&scored, &candidates, self.gate);
+        if candidates[best].shoot {
+            self.moon_attempts += 1;
+        }
         self.shooting = candidates[best].shoot;
         match candidates[best].choice {
             Choice::Play(card) => card,
@@ -1466,6 +1493,7 @@ mod tests {
         for card in picks {
             assert!(view.hand().contains(card));
         }
+        assert_eq!(bot.moon_passes(), 0);
     }
 
     #[test]
@@ -1656,6 +1684,7 @@ mod tests {
         );
         let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(1)).samples(64);
         assert_eq!(bot.play_card(&view), card("K♠"));
+        assert_eq!(bot.moon_attempts(), 0);
 
         // East already holds points, so the moon is dead for North and the
         // shoot candidate is not even generated.
@@ -1711,5 +1740,6 @@ mod tests {
             .play([&mut bot, &mut east, &mut south, &mut west])
             .expect("no seat cheats");
         assert_eq!(result.shooter(), Some(Seat::North), "the bot shot it");
+        assert_eq!(bot.moon_attempts(), 1);
     }
 }

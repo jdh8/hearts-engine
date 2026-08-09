@@ -530,7 +530,11 @@ machinery was built and reverted: promoting an observed sweeper to a
 rollout moon attempt worked mechanically and cost
 `−0.0256 ± 0.0073` rank (3.5 SE) against a greedy field.  Parked until
 the opponent pool actually shoots — the Deep CFR yardstick moons ~18%
-of rounds and is the revival trigger; self-play is not.
+of rounds and is the revival trigger; self-play is not.  The 2026-08-09
+rerun re-measured the yardstick at ~10% of deals (see
+[cfr-gap.md](cfr-gap.md)), which still qualifies, but P6 stays parked
+behind that doc's P4, which asks the pass-side question from tournament
+data instead of rollout worlds.
 
 ## Sequencing
 

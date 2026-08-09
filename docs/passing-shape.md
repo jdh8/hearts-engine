@@ -3,7 +3,9 @@
 **Status: IN PROGRESS (2026-08-08).**  P1 has **shipped**, with its
 mandatory re-sweep and its deletion A/B both run; the tie-break question
 it left open is settled and a new P6 opened and closed alongside it.  P2
-is closed as a screen null; P3 is next.  Sibling:
+is closed as a screen null; P3 is next, and is consumed by
+[cfr-gap.md](cfr-gap.md) as that campaign's P1 — its verdict lands in
+both ledgers.  Sibling:
 [passing-opponent-model.md](passing-opponent-model.md), whose P1
 measures the refill risk this doc's void bets are discounted by; this
 doc's P1 lands before any of the sibling's scorer changes.

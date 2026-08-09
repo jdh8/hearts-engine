@@ -62,3 +62,12 @@ breaks hearts**; in ours only a heart does.  The shim overrides his
 not the model's input encoding — so both sides play under identical
 rules, at the cost of denying his model a heart lead it was trained to
 consider legal after a bare Q♠.  Results should note this caveat.
+
+## Results
+
+Recorded results and the campaign to close the measured gap live in
+[docs/cfr-gap.md](../docs/cfr-gap.md).  The harness's `--csv` rows count
+our own moon attempts via `MonteCarloBot`'s lifetime counters; Deep
+CFR's *attempts* are unobservable through the shim — the wire carries
+his card choices, not his intent — so only his completed moons are
+counted, and no proxy is reported.
