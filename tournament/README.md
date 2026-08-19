@@ -36,6 +36,11 @@ The trained model is not published; the default endpoint is Brian's
 personal server at <https://www.bernsrite.com>.  **Keep runs against it
 small and throttled.**
 
+CSV runs retain compact pass traces in North/East/South/West order and
+seat-tagged public plays grouped by trick, enough to audit pass-fed moons
+and defense timing without another live-server replay.  Analyze a checkpoint
+or completed run with `ruby tournament/analyze_csv.rb run.csv`.
+
 ## Protocol
 
 One JSON request per line on the shim's stdin; one response per line on

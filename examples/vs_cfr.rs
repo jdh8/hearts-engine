@@ -15,14 +15,14 @@
 //! side's mean payoff per seat-deal with a paired standard error; positive
 //! means Deep CFR beats the Monte Carlo bot.
 //! `--csv PATH` also checkpoints one row per deal-seating for post-hoc
-//! decomposition.
+//! decomposition, including compact pass and public-play traces.
 //!
 //! Every shim reply carries Brian's legal-action set, which is checked
 //! against ours on every decision, so any rules drift between the two
 //! engines aborts the run instead of skewing it.
 
 use anyhow::{Context as _, Result, bail, ensure};
-use hearts_engine::hearts::{Card, PassDirection, Rules};
+use hearts_engine::hearts::{Card, PassDirection, Rules, Seat};
 use hearts_engine::{MonteCarloBot, Strategy, Table, View};
 use rand::SeedableRng as _;
 use rand::rngs::StdRng;
@@ -126,6 +126,30 @@ fn direction_json(direction: PassDirection) -> &'static str {
         PassDirection::Across => "across",
         PassDirection::Hold => "hold",
     }
+}
+
+fn round_trace(round: &hearts_engine::hearts::Round) -> (String, String) {
+    let passes = Seat::ALL
+        .map(|seat| {
+            round
+                .passed(seat)
+                .into_iter()
+                .flatten()
+                .map(code)
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .join("/");
+    let mut plays = String::new();
+    for (index, trick) in round.tricks().iter().enumerate() {
+        if index > 0 {
+            plays.push('/');
+        }
+        for (seat, card) in trick.plays() {
+            let _ = write!(plays, "{}{}", seat.letter(), code(card));
+        }
+    }
+    (passes, plays)
 }
 
 impl CfrBot {
@@ -248,7 +272,7 @@ fn parse_args() -> Result<Option<Config>> {
 
 /// The source revision under test, when this is run from a Git checkout.
 fn git_revision() -> String {
-    Command::new("git")
+    let mut revision = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
@@ -257,7 +281,16 @@ fn git_revision() -> String {
         .and_then(|output| String::from_utf8(output.stdout).ok())
         .map(|revision| revision.trim().to_owned())
         .filter(|revision| !revision.is_empty())
-        .unwrap_or_else(|| "unknown".to_owned())
+        .unwrap_or_else(|| "unknown".to_owned());
+    if !Command::new("git")
+        .args(["diff", "--quiet", "HEAD", "--"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .status()
+        .is_ok_and(|status| status.success())
+    {
+        revision.push_str("-dirty");
+    }
+    revision
 }
 
 /// Brian's zero-sum payoff: mean of the other players' points minus own.
@@ -319,7 +352,7 @@ fn main() -> Result<()> {
         writeln!(csv, "# {context}")?;
         writeln!(
             csv,
-            "pair,seating,direction,deal_seed,cfr_seats,north,east,south,west,shooter,shooter_side,mc_attempts,mc_passes,cfr_payoff"
+            "pair,seating,direction,deal_seed,cfr_seats,north,east,south,west,shooter,shooter_side,mc_attempts,mc_passes,passes_nesw,plays_by_trick,cfr_payoff"
         )?;
         Some(csv)
     } else {
@@ -396,6 +429,7 @@ fn main() -> Result<()> {
                 moons[usize::from(is_cfr)] += 1;
             }
             if let Some(csv) = &mut csv {
+                let (passes, plays) = round_trace(table.round());
                 let shooter_name =
                     shooter.map_or_else(String::new, |seat| seat.letter().to_string());
                 let shooter_side = shooter.map_or("", |seat| {
@@ -407,7 +441,7 @@ fn main() -> Result<()> {
                 });
                 writeln!(
                     csv,
-                    "{pair},{seating},{},{deal_seed},{},{},{},{},{},{shooter_name},{shooter_side},{attempts_delta},{passes_delta},{cfr_payoff:.6}",
+                    "{pair},{seating},{},{deal_seed},{},{},{},{},{},{shooter_name},{shooter_side},{attempts_delta},{passes_delta},{passes},{plays},{cfr_payoff:.6}",
                     direction_json(direction),
                     if seating == 0 { "EW" } else { "NS" },
                     scores[0],
@@ -452,4 +486,27 @@ fn main() -> Result<()> {
         ),
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hearts_engine::HeuristicBot;
+
+    #[test]
+    fn round_trace_is_compact_and_csv_safe() {
+        let mut rng = StdRng::seed_from_u64(1);
+        let mut table = Table::deal(Rules::new(), PassDirection::Left, &mut rng);
+        let mut bots = std::array::from_fn::<_, 4, _>(|_| HeuristicBot::default());
+        let [north, east, south, west] = &mut bots;
+        table
+            .play([north, east, south, west])
+            .expect("heuristic bots play legally");
+
+        let (passes, plays) = round_trace(table.round());
+        assert_eq!(passes.len(), 27); // 12 two-byte card codes + 3 separators
+        assert_eq!(plays.len(), 168); // 52 seat/card codes + 12 separators
+        assert!(!passes.contains(','));
+        assert!(!plays.contains(','));
+    }
 }

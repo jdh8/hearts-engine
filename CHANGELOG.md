@@ -333,6 +333,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **The instrumented Deep CFR baseline leaves the gap open, unlocks P4,
+  and closes P5.**  The 2026-08-19 duplicate tournament ran 1,600 deals
+  (800 pairs), seed 1, `mc:128`, 500 ms throttle at `2960003-dirty`; the
+  suffix covers trace/provenance-only harness changes, not engine policy.
+  With the standing Q♠-normalization caveat, Deep CFR wins
+  `+0.938 ± 0.151` payoff per seat-deal (6.2 SE), points 15.69 vs 18.50
+  and completed moons 193 vs 59.  The net moon differential accounts for
+  up to 0.726 (77%) of the headline; our bot completed 59 of 172 measured
+  attempts and chose 78 shoot passes.  P4's predeclared pass-feed test
+  clears at 125/193 CFR moons (64.8%; even ace-only 40.4% and high-heart-only
+  35.8% clear one third), so anti-moon passing advances to an experiment.
+  P5 closes unbuilt: only 8/193 completions exposed a missed beat in the
+  previously swept 5–7-point window, and only 7/193 on the trick crossing
+  eight.  `run.csv` independently reproduces stdout through
+  `tournament/analyze_csv.rb`; recovered HTTP retries stretched the polite
+  daytime run to 12 h 16 min without losing a pair.
 - **The flush-before-cash shoot line was refuted at screen and ships no
   behavior change.**  A private second moon line led the lowest legal rank
   whenever it held the lead, then carried that policy through the same latch,
@@ -381,16 +397,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   challenger, while more than half permits it.
 - **`vs_cfr` now records what the rerun below could not.**  `--csv PATH`
   writes one row per deal-seating — pair, seating, pass direction,
-  `deal_seed`, CFR seats, the four raw seat scores, shooter seat and
+  `deal_seed`, CFR seats, the four rule-scored seat totals, shooter seat and
   side, the mc bots' per-seating moon-attempt and shoot-pass deltas, and
-  the seating's mean CFR seat payoff — flushed after every pair, so a
-  dropped multi-hour run keeps its prefix.  The launch line, final
-  report and CSV header all carry provenance (git revision, seed,
-  samples, throttle, shim command); the report gains a moon-attempt
-  tally.  The two Monte Carlo bots are now rebuilt each pair from the
-  salted deal seed, so any single pair replays in isolation — the old
-  harness threaded one RNG stream through the whole run, making pair
-  *k* unreachable without replaying `0..k`.  This changes the harness's
+  the seating's mean CFR seat payoff — plus compact pass and public-play
+  traces so conceded moons can be checked for pass feeds and late defense;
+  it flushes after every pair, so a dropped multi-hour run keeps its prefix.
+  The launch line, final report and CSV header all carry provenance (git
+  revision, with `-dirty` when applicable, seed, samples, throttle, shim
+  command); the report gains a moon-attempt tally.  A standard-library
+  analyzer reproduces the headline and audits the P4/P5 unlock conditions
+  from either a flushed prefix or the completed file.  The two Monte Carlo
+  bots are now rebuilt each pair from the salted deal seed, so any single
+  pair replays in isolation — the old harness threaded one RNG stream
+  through the whole run, making pair *k* unreachable without replaying
+  `0..k`.  This changes the harness's
   decisions relative to the recorded runs, which is fine: cross-run
   pairing is by deal, and the deals are unchanged.
 - **The Deep CFR rerun: the gap is cut 43 % and is still mostly moons.**

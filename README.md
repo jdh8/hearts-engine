@@ -124,12 +124,11 @@ is the primary A/B detector, `points` the interpretable magnitude, and
    rung of it.
 3. **Absolute anchor.**  `examples/vs_cfr` bridges to brianberns' Deep
    CFR Hearts over duplicate 2-v-2 seating (see `tournament/README.md`,
-   including the Q♠-breaks-hearts rules caveat).  On record, 800 deals
-   each: Deep CFR's edge over `mc:128` fell from `1.28 ± 0.21` payoff
-   per seat-deal (2026-07-18, completed moons 142 to 8) to
-   `0.73 ± 0.20` (2026-08-09, moons 81 to 24).  The remaining gap is
-   still mostly the moon differential; `docs/cfr-gap.md` is the
-   campaign to close it.
+   including the Q♠-breaks-hearts rules caveat).  The instrumented P0
+   baseline (2026-08-19, 1,600 deals, seed 1) puts Deep CFR's edge over
+   `mc:128` at `0.94 ± 0.15` payoff per seat-deal, with completed moons
+   193 to 59.  The net moon differential explains up to 77% of the gap;
+   `docs/cfr-gap.md` records the earlier anchors and the campaign.
 4. **Tripwire.**  `cargo test --release --test strength -- --ignored`
    asserts `mc:128` beats a greedy field by at least two points a round.
 
