@@ -333,6 +333,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **Anti-moon passing was refuted at confirmation and ships no behavior
+  change.**  The permanent CFR CSV analyzer now puts P4's 125/193 fed-moon
+  headline in context: 94.5% of all 2,400 MC passes already carried a
+  dangerous Q/K/A or T/J♥ (2.12 per pass), but 204/289 fed cards were won
+  by the shooter in a point trick.  Its disjoint fed/scored census is Q♠
+  32/32, A♠/K♠ 63/33, off-spade Q/K/A 163/108, and T/J♥ 31/31; no class
+  reached the predeclared 70% concentration rule, and reconstructed
+  13-card giver hands validate every row.  A temporary flat pass-score
+  penalty kept the full set, reached the Monte Carlo candidate, opponent
+  pass and observation roles, and neutralized the shoot-pass ballast.
+  Candidate-0 reconstruction selected weights 6/7/8 around the weight-7
+  retention knee; all changed over 81% of a deterministic 4,096-hand probe.
+  At the 2,000-block seed-0 screen, weight 8 missed the −2-SE rank floor and
+  the largest passing arm, 7, advanced with `rank −0.0107 ± 0.0096`,
+  `win +0.0024 ± 0.0042`, `points +0.1343 ± 0.0962`, and
+  `moons +0.0138 ± 0.0023`.  It had no latency regression and reproduced
+  the pre-change/default serial/parallel seed-7 CSV byte for byte.  On
+  6,000 fresh seed-1 blocks it lost `rank −0.0165 ± 0.0053` (−3.1 SE),
+  despite `win −0.0036 ± 0.0023` staying inside its gate; attempts rose
+  `+0.01258 ± 0.00148` per round and moons `+0.00625 ± 0.00130`.
+  The penalty, shoot-ballast split, knob, tests, and probe were deleted,
+  leaving only the analyzer and measurement record.  No live-server rerun
+  was launched.
 - **The instrumented Deep CFR baseline leaves the gap open, unlocks P4,
   and closes P5.**  The 2026-08-19 duplicate tournament ran 1,600 deals
   (800 pairs), seed 1, `mc:128`, 500 ms throttle at `2960003-dirty`; the

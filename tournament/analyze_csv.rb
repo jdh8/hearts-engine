@@ -43,6 +43,15 @@ def dangerous?(card)
   RANKS.index(card[0]) >= RANKS.index("Q") || card[1] == "H" && "TJ".include?(card[0])
 end
 
+def feed_class(card)
+  # Disjoint in the plan's listed order: the final bucket is therefore T/J♥.
+  return "Q♠" if card == "QS"
+  return "A♠/K♠" if %w[AS KS].include?(card)
+  return "off-spade A/K/Q" if RANKS.index(card[0]) >= RANKS.index("Q")
+
+  "hearts ≥T"
+end
+
 path = ARGV.fetch(0, "run.csv")
 lines = File.readlines(path)
 provenance = lines.take_while { |line| line.start_with?("#") }.map(&:chomp)
@@ -72,9 +81,17 @@ rows.each do |row|
 end
 
 cfr_moons = rows.select { |row| row["shooter_side"] == "cfr" }
+mc_passes = rows.flat_map do |row|
+  row["passes_nesw"].split("/", -1).each_with_index.filter_map do |pass, index|
+    cards = pass.scan(/../)
+    cards unless row["cfr_seats"].include?(SEATS[index]) || cards.empty?
+  end
+end
 pass_fed = []
 eligible = 0
 dangerous_cards = 0
+fed_cards = []
+fed_point_cards = []
 missed_pre8 = []
 missed_sweep_window = []
 missed_crossing = []
@@ -83,23 +100,35 @@ miss_points = Hash.new(0)
 cfr_moons.each do |row|
   shooter = row["shooter"]
   shooter_index = SEATS.index(shooter) or abort "bad shooter #{shooter.inspect}"
+  tricks = parse_tricks(row["plays_by_trick"])
+  plays = tricks.flatten(1)
   giver_offset = {"left" => -1, "right" => 1, "across" => 2}[row["direction"]]
   if giver_offset
     giver_index = (shooter_index + giver_offset) % 4
     giver = SEATS[giver_index]
     unless row["cfr_seats"].include?(giver)
       eligible += 1
-      pass = row["passes_nesw"].split("/", -1).fetch(giver_index).scan(/../)
+      passes = row["passes_nesw"].split("/", -1).map { |pass| pass.scan(/../) }
+      pass = passes.fetch(giver_index)
       fed = pass.select { |card| dangerous?(card) }
       unless fed.empty?
         pass_fed << row
         dangerous_cards += fed.length
+        fed_cards.concat(fed)
+      end
+
+      original_hand = plays.select { |seat, _| seat == giver }.map(&:last) -
+                      passes.fetch((giver_index + giver_offset) % 4) + pass
+      abort "expected 13 distinct original cards for #{giver} in pair #{row["pair"]}" unless original_hand.length == 13 && original_hand.uniq.length == 13
+
+      fed.each do |card|
+        trick = tricks.find { |candidate| candidate.any? { |_, played| played == card } } or abort "fed card #{card} missing from plays"
+        fed_point_cards << card if trick_winner(trick) == shooter && trick_points(trick).positive?
       end
     end
   end
 
-  tricks = parse_tricks(row["plays_by_trick"])
-  hands = SEATS.chars.to_h { |seat| [seat, tricks.flatten(1).select { |play| play.first == seat }.map(&:last)] }
+  hands = SEATS.chars.to_h { |seat| [seat, plays.select { |play| play.first == seat }.map(&:last)] }
   shooter_points = 0
   row_missed = false
   row_sweep_window = false
@@ -143,6 +172,18 @@ puts "moons: mc #{moons["mc"]} / cfr #{moons["cfr"]}"
 puts "mc moon attempts: #{rows.sum { |row| Integer(row["mc_attempts"]) }} (shoot passes chosen: #{rows.sum { |row| Integer(row["mc_passes"]) }})"
 puts "P4 dangerous = Q/K/A of any suit or T/J hearts"
 puts format("P4 pass-fed CFR moons: %d/%d (%.1f%% of all; %d/%d eligible, %d dangerous cards)", pass_fed.length, cfr_moons.length, 100.0 * pass_fed.length / [cfr_moons.length, 1].max, pass_fed.length, eligible, dangerous_cards)
+fed_classes = fed_cards.group_by { |card| feed_class(card) }.transform_values(&:length)
+fed_point_classes = fed_point_cards.group_by { |card| feed_class(card) }.transform_values(&:length)
+classes = ["Q♠", "A♠/K♠", "off-spade A/K/Q", "hearts ≥T"].map do |label|
+  "#{label} #{fed_classes.fetch(label, 0)}/#{fed_point_classes.fetch(label, 0)}"
+end
+puts "P4 fed cards by class (fed/point-trick won): #{classes.join(", ")}"
+exact_cards = fed_cards.tally.sort_by { |card, count| [-count, card] }.map { |card, count| "#{card}=#{count}" }
+puts "P4 top exact fed cards: #{exact_cards.join(", ")}"
+dangerous_passes = mc_passes.count { |pass| pass.any? { |card| dangerous?(card) } }
+dangerous_pass_cards = mc_passes.sum { |pass| pass.count { |card| dangerous?(card) } }
+puts format("P4 MC-pass base rate: %d/%d (%.1f%%) contain dangerous; %.2f dangerous cards/pass", dangerous_passes, mc_passes.length, 100.0 * dangerous_passes / [mc_passes.length, 1].max, dangerous_pass_cards.fdiv([mc_passes.length, 1].max))
+puts format("P4 fed-card fate: %d/%d (%.1f%%) won by shooter in a point trick", fed_point_cards.length, fed_cards.length, 100.0 * fed_point_cards.length / [fed_cards.length, 1].max)
 puts format("P5 missed pre-8 beat: %d/%d CFR moons (%.1f%%); on threshold-crossing trick: %d/%d (%.1f%%)", missed_pre8.length, cfr_moons.length, 100.0 * missed_pre8.length / [cfr_moons.length, 1].max, missed_crossing.length, cfr_moons.length, 100.0 * missed_crossing.length / [cfr_moons.length, 1].max)
 puts format("P5 missed beat in swept 5–7 window: %d/%d CFR moons (%.1f%%)", missed_sweep_window.length, cfr_moons.length, 100.0 * missed_sweep_window.length / [cfr_moons.length, 1].max)
 puts "P5 missed-beat decision points by shooter points: #{miss_points.sort.to_h}"

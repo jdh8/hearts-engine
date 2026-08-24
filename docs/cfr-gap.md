@@ -1,9 +1,11 @@
 # Closing the Deep CFR gap — the moon campaign
 
-**Status: OPEN (2026-08-19).**  P0 is complete: Deep CFR remains ahead
-`+0.938 ± 0.151` over 1,600 deals, 6.2 SE from zero, and the net moon
-differential still explains up to 77% of the gap.  P1–P3 were refuted,
-P4 is unlocked by the pass traces, and P5 closes unbuilt.  Siblings:
+**Status: CLOSED (2026-08-24).**  P0 measured Deep CFR ahead
+`+0.938 ± 0.151` over 1,600 deals, 6.2 SE from zero, with the net moon
+differential explaining up to 77% of the gap.  P1–P3 were refuted, P4's
+anti-feed pass penalty failed its fresh-seed rank gate, and P5 closed
+unbuilt.  No decision change survives; closing with every proposal measured
+or ruled out is the honest result.  Siblings:
 [passing-shape.md](passing-shape.md) (owns P1's mechanism) and
 [passing-opponent-model.md](passing-opponent-model.md) (whose parked P6
 is the nearest relative of this doc's P4).
@@ -143,6 +145,7 @@ that deficiency; its proposal verdicts are below.
 | `two_of_clubs_bonus` MC leg | null except moons +2.5/3.3 SE | pass shape reaches the moon column |
 | shape-aware shoot passes | `rank −0.0054 ± 0.0024` at confirm | local shape did not improve attempt quality |
 | flush-before-cash shoot line | `rank −0.0058 ± 0.0022` at screen | a live alternative line reduced both strength and moons |
+| anti-moon pass penalty | `rank −0.0165 ± 0.0053` at confirm | starving control also changed our attempts and cost placement |
 
 The first four define the design space for anything touching attempt
 selection: the double bar is load-bearing, and both flat and
@@ -150,8 +153,8 @@ decision-conditioned loosening are now dead.  A future revision needs
 new evidence or a new mechanism, not another threshold shape.  The next
 four wall off rollout-world opponent modeling.  The pass and ordinary-play
 rows show why every arena A/B in this campaign reads `moons` alongside
-`rank` even when moons are not the target; the final row closes the simple
-second-line bet itself.
+`rank` even when moons are not the target; the final three rows record the
+campaign's pass- and line-shape nulls.
 
 ## Where the moon machinery lives today
 
@@ -195,7 +198,7 @@ numbers, because this doc will outlive the lines.
 | P1 | shape-aware shoot passes | pool only | consumed from passing-shape P3 |
 | P2 | decision-conditional moon bar | selection rule | structural fix |
 | P3 | a second shoot line | pool only | shipped-pattern clone |
-| P4 | anti-moon passing | pass policy | unlocked by P0 |
+| P4 | anti-moon passing | pass policy | refuted at confirm |
 | P5 | earlier live moon defense | overlay | closed unbuilt |
 
 ### P0 — tournament instrumentation
@@ -358,32 +361,80 @@ byte-for-byte back to the cash-only source.
 
 ### P4 — anti-moon passing
 
-**Status: UNLOCKED by P0 (2026-08-19).**
+**Status: REFUTED AT CONFIRM (2026-08-24); shipped pass restored.**
 
-The defensive half of the differential: 81 conceded completions per 800
-deals.  The hypothesis is that some are fed — aces and high hearts
-passed toward the seat our direction serves — and the mechanism, if it
-is ever built, is a danger term in the pass scorer, the cheapest
-defensive lever left (the live overlay already survived its sweep).
-Before P0 it was deliberately not designed further because the harness
-could not show which CFR moons our passes fed; the sibling's parked P6 is
-the adjacent idea on the rollout side.  **Unlock condition:** a post-P0
-rerun's CSV shows at least a third of CFR completions received a dangerous
-card from us.
+**Analysis.**  The predeclared dangerous set was Q/K/A of any suit plus
+T/J♥: high control and the high hearts immediately needed for a sweep.
+P0's headline still reproduces at 125/193 CFR completions fed by an MC
+seat (64.8%; 125/129 eligible), but the permanent analyzer now supplies
+the missing counterfactual context.  Across all 2,400 MC passes, 94.5%
+already contained a dangerous card and the mean was 2.12 per pass, so the
+headline alone was weak evidence.  The fate check was stronger: 204/289
+fed cards were won by the shooter in a point trick (70.6%).  Disjoint
+fed/scored classes were Q♠ 32/32, A♠/K♠ 63/33, off-spade Q/K/A 163/108,
+and the remaining T/J♥ 31/31.  No class held the predeclared 70% of scored
+feeds (the largest was 108/204 = 52.9%), so the full set advanced.  For
+each eligible row the analyzer also reconstructs the giver's original
+13 distinct cards as played − incoming + outgoing; every assertion passes.
 
-The predeclared analysis definition is Q/K/A of any suit or T/J hearts:
-high control, plus the high hearts immediately needed for the sweep.
+**Mechanism and coupling.**  The experiment added a flat `u8`
+`feed_penalty`, initially default 0, subtracting from `pass_score` for the
+full set.  It deliberately did not scale by rank: base rank already orders
+the set, while the existing +100/+90/+80 unprotected-spade tier keeps Q♠
+and its catchers moving at every screened weight.  `pass_model` carried the
+same policy into all three existing roles: candidate ranking, rollout
+opponents' passes, and the incoming-pass observation likelihood.  The last
+therefore modeled the giver as anti-feeding but remained softly bounded by
+`0.75³`; no world was ruled out.  The shoot-pass ballast alone was ranked
+with `feed_penalty = 0`, so control cards a shooter must keep could not sink
+into its bottom three.  Had the default shipped, greedy rollouts,
+`HeuristicBot`, and the web tiers would all have changed too.  Direction
+stayed out of the knowledge-free scorer.  Own attempts were expected to
+move through these couplings and were reported, never gated.
 
-P0 clears the gate decisively: 125/193 CFR completions (64.8%) received
-at least one such card from an MC seat; 125/129 of the completions eligible
-to receive from us on left/right deals did.  The conclusion is robust to
-narrow definitions chosen after the predeclared test: ace-only is 78/193
-(40.4%) and T-or-higher-heart-only 69/193 (35.8%), each still above one
-third.  This is an experiment trigger, not causality — it says the proposed
-lever reaches enough losses to test, not that a different pass would have
-stopped them.  Arena `rank`/`win` non-regression is the gate, because the
-arena's field rarely shoots and cannot show the benefit, only the cost;
-the benefit is priced by the rerun after.
+**Probe and screen.**  Rebuilding the 125 fed deals from `deal_seed`
+validated every recorded giver pass.  The temporary candidate-0 probe —
+not an MC replay — found the retention knee at weight 7.  Weights 6/7/8
+kept 47.4%/54.3%/57.8% of the historically fed cards, while only
+8.6%/7.6%/6.6% of replacements were dangerous.  They changed
+81.2%/85.4%/88.8% of 4,096 deterministic passes, far above the 1% liveness
+floor.
+
+The arena's greedy field rarely shoots, so this stage could price only the
+ordinary-play cost; its anti-CFR benefit would have required the live rerun.
+All local measurements used the temporary P4 working tree based on commit
+`36015ce`, with the engine's Q♠-breaks-hearts rule.
+
+Over 2,000 paired seed-0 blocks against three greedy bots:
+
+| weight | `points` | `win` | `not-last` | `rank` | attempts / round | `moons` |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 6 | `+0.0412 ± 0.0948` | `+0.0015 ± 0.0041` | `−0.0054 ± 0.0031` | `−0.0123 ± 0.0094` | `+0.01575 ± 0.00247` | `+0.0100 ± 0.0022` |
+| 7 | `+0.1343 ± 0.0962` | `+0.0024 ± 0.0042` | `−0.0035 ± 0.0031` | `−0.0107 ± 0.0096` | `+0.01750 ± 0.00262` | `+0.0138 ± 0.0023` |
+| 8 | `−0.0138 ± 0.0994` | `+0.0019 ± 0.0043` | `−0.0098 ± 0.0032` | `−0.0204 ± 0.0099` | `+0.02113 ± 0.00271` | `+0.0131 ± 0.0023` |
+
+Weight 8 missed the `rank ≥ −2 SE` non-regression gate at −2.1 SE;
+6 and 7 passed both it and the `win ≥ −2 SE` gate, so the predeclared
+largest-weight rule advanced 7 alone.  Its shoot-pass choices actually fell
+`−0.01300 ± 0.00133` per round while play-time attempts rose, a useful
+warning that pass shape and the later shooting latch do not move together.
+The homogeneous greedy A/B was exactly zero.  The default-0 build reproduced
+the pre-change 200-block seed-7 arena CSV byte for byte, and serial and
+`parallel` builds matched it (SHA-256 `92ecae1948714…`).  Across repeated
+500-block seeds 0/1/2, weight 7 took 21.20 seconds against default's 22.28;
+there was no latency regression.
+
+**Confirmation and verdict.**  On 6,000 fresh seed-1 blocks, weight 7 moved
+`points −0.0475 ± 0.0535`, `win −0.0036 ± 0.0023`,
+`not-last −0.0025 ± 0.0018`, `rank −0.0165 ± 0.0053`, and
+`moons +0.00625 ± 0.00130`.  Attempts rose
+`+0.01258 ± 0.00148` per round while shoot passes fell
+`−0.01604 ± 0.00083`.  Win remained within its −2-SE gate, but rank lost
+by 3.1 SE, so the confirmation gate failed.  The penalty, predicate,
+shoot-ballast split, arena knob, tests, and temporary probe were deleted;
+the engine is byte-for-byte back.  The permanent analyzer census remains.
+No live-server rerun was launched, so the standing Q♠ normalization caveat
+applies only to the P0 evidence, not to a nonexistent transfer claim.
 
 ### P5 — earlier live moon defense
 
@@ -432,22 +483,21 @@ stands; changing 8 would re-propose its null for a tiny reachable subset.
 
 ## Sequencing and the deletion ledger
 
-P0 and its instrumented 1,600-deal baseline are complete.  P1 and P2
-closed without behavior changes at confirmation and P3 at screen.  P0
-rules out campaign closure, unlocks P4 as the next engine experiment, and
-closes P5 unbuilt.  The measured `mc:256` sample-count gain remains the
-independent compute lever if a second yardstick leg is wanted; it does not
-replace P4's mechanism test.  The
-campaign closes when a rerun's headline is inside 2 SE of zero,
-confirmed once on a fresh seed — or when the remaining proposals are all
-measured nulls, in which case the honest close is "the residue is not
-moons, and the next campaign is ordinary card play."
+P0 and its instrumented 1,600-deal baseline are complete.  P1, P2 and P4
+closed without behavior changes at confirmation, P3 at screen, and P5
+unbuilt.  No live P4 rerun was owed after its fresh-seed arena failure.
+The measured `mc:256` sample-count gain remains an independent compute
+lever, not a result of this campaign.  With every proposal measured or
+ruled out, the campaign takes its predeclared honest close: the remaining
+gap is not resolved by these moon mechanisms, and the next campaign is
+ordinary card play.
 
-Ledger: the P0 counters and CSV are instrumentation and stay; P2's
-clamp constants and validation path and P3's second line were deleted
-on their kill criteria.  The journald checkpoint trail stops being
-load-bearing the day the first CSV run lands, and this doc's checkpoint
-table becomes the only place it survives.
+Ledger: the P0 counters and CSV instrumentation stay, as does P4's expanded
+CSV analyzer.  P2's clamp constants and validation path, P3's second line,
+and P4's pass knob and measurement scaffolding were deleted on their kill
+criteria.  The journald checkpoint trail stops being load-bearing the day
+the first CSV run lands, and this doc's checkpoint table becomes the only
+place it survives.
 
 ## Interactions with the sibling docs
 
@@ -455,10 +505,9 @@ table becomes the only place it survives.
   both status ledgers, and its mechanism text stays there.
 - passing-opponent-model.md's parked P6 (shooter-aware opponent passes)
   named "the Deep CFR yardstick moons ~18% of rounds" as its revival
-  trigger; P0 measures it at 12.1% of deals.  The trigger still
-  reads as met in spirit — the yardstick field does shoot — but P6
-  remains parked behind this doc's P4, which asks the pass-side
-  question with data instead of worlds.
+  trigger; P0 measures it at 12.1% of deals.  P4 has now asked the pass-side
+  question with data and failed its strength gate.  Reviving the distinct
+  rollout-opponent proposal would be a new campaign, not unfinished P4 work.
 - The sibling's P0 (`pass_model` plumbing) is what lets P1's arms face
   the arena as `mc:` specs; nothing here re-plumbs.
 
