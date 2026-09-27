@@ -112,6 +112,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Web cards, faces and backs alike, are bridge-sized (2.25:3.5) instead of
+  poker-sized, with the fan overlap and face padding retuned to match.
 - The pass policy is now **set-aware**: `greedy_pass` picks its three cards
   one at a time, rescoring what is left after each, instead of taking the top
   three of one flat sort of the dealt thirteen.  `pass_score`'s void term

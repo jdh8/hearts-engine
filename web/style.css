@@ -18,7 +18,7 @@
   --blue: #1a74d9;
   --back: #b23a3a;
   --gold: #f1cb4b;
-  --card-w: 2.7rem;
+  --card-w: 2.45rem; /* bridge size, 2.25:3.5 */
   --card-h: 3.8rem;
 }
 
@@ -118,7 +118,7 @@ main {
 }
 
 .fan { display: flex; justify-content: center; min-width: var(--card-w); min-height: var(--card-h); }
-.fan .card { margin-left: -1.5rem; box-shadow: -1px 1px 2px rgba(0, 0, 0, 0.3); }
+.fan .card { margin-left: -1.25rem; box-shadow: -1px 1px 2px rgba(0, 0, 0, 0.3); }
 .fan .card:first-child { margin-left: 0; }
 
 .trick {
@@ -214,7 +214,7 @@ main {
   width: var(--card-w);
   height: var(--card-h);
   margin: 0;
-  padding: 0.2rem 0.3rem;
+  padding: 0.125rem 0.3rem 0.2rem 0.4rem; /* ink-balanced: rank and suit insets measured equal */
   flex: none;
   border: 0;
   border-radius: 6px;
@@ -548,11 +548,11 @@ body.log-hidden .log { display: none; }
 }
 
 @media (max-width: 28rem) {
-  :root { --card-w: 2.7rem; --card-h: 3.82rem; }
+  :root { --card-w: 2.45rem; --card-h: 3.82rem; }
   .quiet, .difficulty { font-size: 0.76rem; padding: 0.2rem 0.45rem; }
   .game-table { height: 28.5rem; min-height: 28.5rem; }
   .trick { top: 43%; transform: translate(-50%, -50%) scale(0.9); }
-  .fan .card { margin-left: -1.9rem; }
+  .fan .card { margin-left: -1.65rem; }
   .round-result { grid-template-columns: repeat(2, 1fr); }
 }
 
