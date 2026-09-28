@@ -1,8 +1,9 @@
 # Ordinary play — search throughput, sample efficiency, and the rollout policy
 
-**Status: OPEN (2026-09-29).**  Nothing here is built or measured.  This
-is the campaign [cfr-gap.md](cfr-gap.md) closed into: with every moon
-mechanism measured or ruled out, the remaining Deep CFR gap is the
+**Status: OPEN (2026-09-29, revised against the code the same day).**
+Nothing here is built or measured.  This is the campaign
+[cfr-gap.md](cfr-gap.md) closed into: with every moon mechanism measured
+or ruled out, the remaining Deep CFR gap is the
 ordinary-play residue (about `+0.2` payoff per seat-deal), and the one
 strength lever that is measured and unspent is compute — `mc:256` beats
 `mc:128`.  So the proposals come in three tiers: make each rollout cheaper
@@ -43,10 +44,15 @@ wall it off).  No pass-policy changes.  No `Knowledge` ledger and no
 Two of these shape everything below.  The maxⁿ null and the opponent-moon
 null together say: a world may be *sampled* with perfect information, but
 nobody inside it may *play* with it.  Every proposal here keeps the rollout
-policy knowledge-free (`legal`, `trick`, `played`, points so far), which is
-also what lets the same policy ship as `HeuristicBot`.  And the play-
-inference reversion says the sampler's soundness is the void table plus
-the pass likelihood, nothing softer.
+policy knowledge-free — `greedy_play` reads exactly `legal`, `trick` and
+`played`; only `rollout_play`'s shoot branch also reads points taken —
+which is also what lets the same policy ship as `HeuristicBot`.  And the
+play-inference reversion says the sampler's soundness is the void table
+plus the pass likelihood, nothing softer.  That likelihood is applied by
+*rejection* inside `sample_hands` (a draw survives with probability
+`pass_observation_likelihood`), not as a weight, and it carries real
+evidence about the Q♠: a giver that did not pass us the queen probably
+does not hold it.
 
 ## Where the cost goes today
 
@@ -55,16 +61,22 @@ Function names, not line numbers.
 - **`sample_world`** builds every world by dealing the sampled original
   hands as a `Hold` round and replaying the entire public history through
   `Round::play`.  Early in a round that is nothing; on trick eleven it is
-  ten tricks of replay in front of two tricks of rollout.  Nothing is
-  cached between decisions: the next trick resamples from zero.
+  ten tricks of replay in front of two tricks of rollout.  The replay is
+  paid once per world; the rollout once per world *per live candidate*.
+  Nothing is cached between decisions: the next trick resamples from zero.
 - **`score_worlds`** rolls candidates in growing batches (32, 32, 64, …)
   with challenger elimination, and in the `parallel` build each
-  `(candidate, batch)` is its own `par_iter` of 32 small jobs.
+  `(candidate, batch)` is its own `par_iter` over the batch.  The arena
+  already runs blocks under `into_par_iter`, so there the inner
+  parallelism only competes for saturated cores; it pays in a
+  *sequential* consumer — `vs_cfr`, `play` — and nowhere in the serial
+  wasm build.
 - **The budget is in worlds**, `samples` of them, extended up to three
   times when the incumbent/challenger comparison stays inside the gate.  A
-  pass decision rolls thirteen tricks per world; a trick-twelve decision
-  rolls one.  Late decisions are therefore an order of magnitude cheaper
-  than the budget lets them use.
+  pass decision rolls thirteen tricks per world for some twenty
+  candidates; a trick-twelve decision replays eleven tricks and rolls two
+  for at most two.  Per world, the late decision costs several times
+  less — not thirteen times, because the replay does not shrink.
 - **The policy** is `greedy_play`: lead low spades to smoke the queen,
   else lead the shortest suit low; duck under the winner; last to a clean
   trick takes it cheaply; void, dump the most dangerous card.  It reads
@@ -74,16 +86,18 @@ Function names, not line numbers.
 
 | # | Proposal | Touches | Class | Status |
 | --- | --- | --- | --- | --- |
-| T2 | coarser parallel tasks | `score_worlds` | throughput | open |
-| S1 | stratify worlds by the Q♠ holder | sampler | sample efficiency | open |
-| S3 | budget in rollout tricks, not worlds | `score` | sample efficiency | open |
-| P1 | cheap greedy lead rules | `greedy_play` | policy | open |
+| T2 | coarser parallel tasks | `score_worlds` | throughput, sequential consumers only | open |
+| S1 | stratify worlds by the Q♠ holder | sampler, `beats` | sample efficiency | open, probe first |
+| S3 | spend the budget where compute pays | `score` | sample efficiency | open, probe first |
+| P1 | keep a high spade guarded | `greedy_play` | policy | open |
 | P2 | a distilled rollout policy | `greedy_play`, new offline tooling | policy, high ceiling | open, last |
 
-Suggested order: S1 and S3 first, both small and policy-neutral; T2
-whenever the arena or the tournament harness is the bottleneck; P1 as
-cheap arena legs; P2 as its own campaign once S3 has bought it enough
-samples to be screened at `mc:256`-equivalent cost.
+Suggested order: the S1 and S3 probes first — each is temporary
+instrumentation or one arena leg, and each can kill its proposal before
+anything ships; P1 as one cheap arena leg alongside; T2 only when a
+tournament rerun's wall time is ours rather than the shim's; P2 as its
+own campaign once S3 has said which decisions its screening budget
+should go to.
 
 **Cut before building (2026-09-29).**  T0 (profile the sampler) only
 gated T1 and T3, and changed no decision on its own.  T1 (carry worlds
@@ -92,6 +106,17 @@ both rewire the sampler or every `Scored` consumer for a throughput gain
 nobody has shown is there, and T3 pays for it in effective sample size.
 S2 (enumerate worlds near the end) targets the late decisions S3 already
 floods with cheap worlds.
+
+**Revised against the code (2026-09-29).**  S1's unbiasedness argument
+was false (below) and its read would have come back null by
+construction; S3's cost model ignored the replay and hid that a
+throughput-matched budget must take worlds *from* early decisions; T2
+was measured on an instrument that cannot see it.  P1(ii) — prefer
+leading a suit that has gone round once — is cut: its premise runs
+backwards.  A suit's later rounds are the dangerous ones, because that
+is when opponents are void and discard points onto it; the
+shortest-suit rule it would override exists to be the one creating the
+void.  P1(i) is simplified to the rule its knob collapsed to.
 
 ### T2 — coarser parallel tasks
 
@@ -107,111 +132,144 @@ front end are untouched.  The bit-identity test
 (`seeded_pick_is_identical_across_serial_and_parallel_builds`) is the
 guard.
 
-**Measurement.**  Repeated 500-block arena throughput on seeds 0/1/2 with
-`--features parallel`, and the 200-block seed-7 CSV byte-identical across
-serial, old-parallel and new-parallel builds.
+**Measurement.**  Not arena throughput: the arena's block-level
+`into_par_iter` already saturates the cores, so a +0% there says
+nothing.  The consumer is a sequential run — the tournament harness —
+so the instrument is repeated `vs_cfr` wall time against a local shim at
+`--throttle-ms 0`, first split into time inside our `play_card` versus
+time waiting on the shim.  Correctness: the 200-block seed-7 arena CSV
+byte-identical across serial, old-parallel and new-parallel builds.
 
-**Kill criterion.**  Any CSV difference is a bug.  Throughput below +5%
-means rayon overhead was not the cost and the change is deleted as noise.
+**Kill criterion.**  Any CSV difference is a bug.  If the shim's share
+of wall time dominates, T2 has no consumer and is cut unbuilt; if built,
+under +5% on our share means rayon overhead was not the cost and the
+change is deleted as noise.
 
 ### S1 — stratify worlds by the Q♠ holder
 
-**Mechanism.**  While the queen is unseen and not ours, the seat holding
-it is the hidden variable that dominates equity variance in nearly every
-ordinary decision.  Before the backtracking in `sample_hands`, assign the
-Q♠ to a seat chosen round-robin across the batch among the seats allowed
-to hold it (non-void in spades, room remaining), with the round-robin
-weighted by each seat's room so that the marginal over the batch matches
-the uniform posterior; then backtrack the rest as today.  Common random
-numbers already pair candidates within a world; stratification removes
-the between-world noise that comes from an unlucky batch putting the
-queen behind us three times in four.
+**Hypothesis.**  While the queen is unseen and not ours, the seat holding
+it may be the hidden variable that dominates the variance of the *paired*
+differences the gate tests.  Common random numbers already cancel
+whatever a world does to both candidates alike; stratification helps only
+with the part of the difference that swings with the queen's seat.
+Whether that part is large is the whole question, and it is cheap to
+answer first.
 
-Stratification is unbiased only if the strata weights are the true
-marginals.  Under voids alone the marginal is proportional to room among
-allowed seats, which is exactly what the unstratified backtracker
-samples; the pass likelihood reweights afterwards in both cases, so the
-two samplers target the same distribution.  A unit test should assert the
-queen's empirical marginal matches between the stratified and the plain
-sampler on a fixed view to within Monte Carlo error.
+**Probe (build nothing).**  Temporarily log, per contested play decision,
+each world's queen holder and each challenger's paired difference
+`challenger − incumbent`; offline, split the variance of the differences
+into between-holder and within-holder parts.  The possible gain in the
+gate's SE is bounded by the between-holder share.  Under 20% on median
+decisions: cut S1 unbuilt.
 
-**Coupling.**  Play-phase sampler only.  At pass time nothing is unseen
-but everything, and the queen's holder is uniform over three seats; the
-same round-robin applies trivially and may as well be on.
+**Mechanism, if the probe clears.**  Three pieces, each forced by
+something the first draft got wrong.
 
-**Measurement.**  The 2,000-block seed-0 screen, `rank` primary; the
-direct read is a *variance* measurement — the mean standard error the
-gate sees per decision, logged temporarily, should fall.  Fresh-seed
-confirmation at 6,000 blocks.  Throughput unchanged by construction; the
-CSV changes, since worlds do.
+- *Weights from the sampler, not from room.*  The first draft set strata
+  weights proportional to each seat's room, claiming that is what the
+  backtracker samples.  It is not: randomized most-constrained-first
+  backtracking is not uniform over consistent deals (the Q♠ is placed
+  uniformly among allowed seats wherever it falls in the order, blind to
+  room), and the pass rejection then moves the queen's marginal on
+  purpose.  Room-weighted quotas would overwrite the one piece of evidence
+  the sampler has about the queen.  So: draw a pool of hands from the
+  unchanged sampler (rejection included — cheap, no rollouts, no replay
+  for rejected draws), take the queen marginal from the pool, and fill
+  each batch's per-seat quotas (largest remainder) from that same pool.
+  Within a stratum the worlds are exact sampler draws; only the weights
+  carry pool noise.
+- *A stratified variance in `beats`.*  With proportional allocation the
+  plain mean already is the stratified estimator, but the plain sample
+  variance still counts the between-strata spread the design removed.
+  Left alone, the gate would see an SE that barely moves, and S1 would
+  read null by construction.  `beats` must pool the within-stratum
+  variances, which means `Scored` carries each world's stratum — the one
+  consumer-visible change.
+- *Play phase only.*  At pass time the queen is either ours or uniform
+  over three seats with no evidence yet; nothing to stratify.
 
-**Kill criterion.**  Per-decision SE not reduced, or `rank` negative
-beyond 2 SE.
+A unit test pins the first piece: on a fixed view with a received pass,
+the stratified and the plain sampler's queen marginals agree within Monte
+Carlo error.
 
-### S3 — budget in rollout tricks, not worlds
+**Measurement.**  Logged per-decision gate SE, which should now fall by
+roughly the probe's between-holder share; then the 2,000-block seed-0
+screen and 6,000-block fresh-seed confirmation, `rank` primary.  The
+sampler draws more hands per world than today, so throughput is
+measured, not assumed.
 
-**Mechanism.**  Redefine the sample budget as rollout *work*: a decision
-with `t` tricks left to roll gets `samples × 13 / t` worlds (capped, say,
-at `8 × samples`), so every decision spends about the same number of
-simulated tricks.  A pass decision keeps its `samples` worlds; a trick-
-twelve decision gets many more, at the same cost.  The width extension
-(`MAX_WIDTH_MULTIPLIER`) scales with it.
+**Kill criterion.**  Probe share under 20%; built, gate SE not reduced,
+or `rank` negative beyond 2 SE.
 
-Whether this is a strength gain depends on where the information is:
-early decisions have more to price but the worlds are noisier; late
-decisions are cheaper to price exactly.  The arena decides.  The knob is
-`samples` itself with new semantics, so the arena spec `mc:128` changes
-meaning; ship it as a separate `work=` knob on `MonteCarloBot` and the
-arena spec, default off, and only flip the default on a confirmed result.
+### S3 — spend the budget where compute pays
 
-**Coupling.**  `score` only.  `assess` inherits it, which is right: the
-hint panel late in a round gets sharper for free.
+**The trade, stated honestly.**  The first draft gave late decisions
+`samples × 13 / t` worlds while "a pass decision keeps its `samples`" —
+and then matched throughput, which cannot both hold.  At fixed wall-clock
+any worlds added late are taken from early decisions.  So the question is
+not "are late decisions under-sampled" but "which decisions does the
+`mc:256`-over-`mc:128` gain live in" — and that is answerable with one
+knob before any redistribution is designed.
 
-**Measurement.**  Match on *throughput* first — pick the constant so that
-repeated 500-block arena time equals the baseline's within 2% — then the
-2,000-block seed-0 screen and 6,000-block seed-1 confirmation on `rank`.
-Report `moons` too; a late-decision-heavy budget may change how often the
-shoot candidate clears the majority bar at trick one.
+**Probe.**  A trick-dependent sample count on `MonteCarloBot`, e.g.
+`samples_from(trick, n)`: `n` worlds from trick `trick` on, `samples`
+before.  Two arena legs against plain `mc:128` over 2,000 seed-0
+blocks — `128 → 256 from trick 7` and `256 → 128 from trick 7` (the
+pass decision stays at 128 in both; its budget belongs to the passing
+siblings).  Each leg's `rank` against the full `mc:256`-vs-`mc:128` gain
+says where the compute pays.
 
-**Kill criterion.**  `rank` not positive at 2 SE on confirm, or any
-`win` regression beyond 2 SE.
+**Mechanism, if one half carries the gain.**  Move worlds from the other
+half at matched throughput.  Price a world honestly: replay `13 − t`
+tricks once, plus `t` tricks per live candidate, so the late discount is
+several-fold, not thirteen-fold; the exchange rate is set empirically by
+the throughput match, not by the formula.  The width extension
+(`MAX_WIDTH_MULTIPLIER`) scales with the per-decision count.  If the
+probe says the gain is spread evenly, S3 is cut: there is nothing to
+reallocate.
 
-### P1 — cheap greedy lead rules
+**Coupling.**  `score` only; the knob is separate from `samples`, so
+`mc:128` keeps its meaning, default off, flipped only on a confirmed
+result.  `assess` inherits it.
 
-Two independent arena legs, each a few lines in `greedy_play`, each
-knowledge-free so it flows into rollouts and `HeuristicBot` alike.
+**Measurement.**  Throughput first — the constant chosen so repeated
+500-block arena time equals the baseline's within 2% — then the 2,000-
+block seed-0 screen and 6,000-block seed-1 confirmation on `rank`.
+Report `moons` too: taking worlds from trick one changes how often the
+shoot candidate clears the majority bar.
 
-**P1(i) — stop smoking the queen behind an unguarded A♠/K♠.**  Today a
-seat that holds neither the queen nor has seen it leads low spades to
-smoke it out.  When the seat also holds A♠ or K♠ with fewer low spades
-than `spade_guards` (the same knob the pass policy uses), each low spade
-led is a guard spent, and the queen may well be behind us waiting for
-exactly that.  Rule: skip the smoke-out while an unguarded A♠/K♠ is in
-hand; fall through to the shortest-suit lead.
+**Kill criterion.**  Probe gain evenly split; built, `rank` not positive
+at 2 SE on confirm, or any `win` regression beyond 2 SE.
 
-**P1(ii) — prefer leading a suit that has gone round once.**  The
-shortest-suit lead is about creating a void.  A cheaper, safer lead is
-often the suit with the fewest live high cards behind us — a suit already
-played once has at most two rounds of danger left, and `played` tells us
-which.  Rule: among suits where our lowest card is below the highest
-unplayed card (we will not win), prefer the suit with the most cards
-already played; ties fall to the existing shortest-suit rule.  This reads
-only `played`, which the policy already takes.
+### P1 — keep a high spade guarded
 
-**Coupling.**  Both change `HeuristicBot`, the web tiers, and every
-rollout.  The greedy self-check (`greedy greedy greedy greedy` prints
+One arena leg, a one-condition change in `greedy_play`, knowledge-free so
+it flows into rollouts and `HeuristicBot` alike.
+
+**Rule.**  Today a seat that holds neither the queen nor has seen it
+leads low spades to smoke it out, even while holding A♠ or K♠.  Each low
+spade led is a guard spent, and the queen may be sitting behind us for
+exactly the moment our high spade is bare.  So smoke only when all our
+spades are below the queen; otherwise fall through to the shortest-suit
+lead.  The first draft gated this on `spade_guards`, but `greedy_play`
+takes no `HeuristicConfig`, and at the shipped 5 the gate holds in
+nearly every hand anyway — it collapses to "holding A♠ or K♠".  A spade
+count threshold is a second leg only if this one is positive.
+
+**Coupling.**  Changes `HeuristicBot`, the web tiers, and every rollout.
+The greedy self-check (`greedy greedy greedy greedy` prints
 `0.000±0.000`) still holds, since the change is deterministic.
 
-**Measurement.**  Each leg separately against the shipped policy over
-2,000 seed-0 blocks, then joint if both are non-negative; confirm on
-6,000 seed-1 blocks.  `rank` primary, `moons` reported: point-aware
-greedy play moved the moon column by −0.39 pp, and a lead rule that
-keeps control cards may move it the other way.
+**Measurement.**  Against the shipped policy over 2,000 seed-0 blocks in
+two lineups — `greedy` (the live heuristic) and `mc:128` (the rollout
+policy) — then confirm on 6,000 seed-1 blocks.  `rank` primary, `moons`
+reported: point-aware greedy play moved the moon column by −0.39 pp, and
+a lead rule that keeps control cards may move it the other way.
 
-**Kill criterion.**  The house one per leg.  A leg that helps `greedy`
-but hurts `mc:128` is the interesting failure — it would mean the rollout
-policy and the live policy want to part company, which is a design
-change, not a tweak.
+**Kill criterion.**  The house one.  A rule that helps `greedy` but hurts
+`mc:128` is the interesting failure — it would mean the rollout policy
+and the live policy want to part company, which is a design change, not
+a tweak.
 
 ### P2 — a distilled rollout policy
 
@@ -220,9 +278,8 @@ this is the one mechanism class the campaign has never tried.  In
 determinized Monte Carlo the rollout policy's quality is the classic
 largest lever, and the point-aware greedy row is this engine's own
 evidence that the lever is live.  It is last because it is the most
-work, because it needs the throughput tier to make its screening
-affordable, and because a fitted policy can lose in ways a rule cannot —
-the moon column above all.
+work, because its labels cost `mc:256` decisions, and because a fitted
+policy can lose in ways a rule cannot — the moon column above all.
 
 **Mechanism.**  Offline: log `mc:256` play decisions from the arena —
 features that are legal for a rollout policy to read (the legal set, the
@@ -236,8 +293,12 @@ knowledge-free core of the live heuristic.  Weights ship as constants;
 no runtime dependency, nothing in the wasm build changes shape.
 
 Two disciplines from the priors.  The scorer must be knowledge-free by
-construction — its features come from the same three arguments
-`greedy_play` takes, so it *cannot* out-inform the field.  And it must be
+construction.  `greedy_play`'s three arguments do not carry the feature
+list above — `legal` is the hand only on a lead, and points taken are
+not an argument at all — so the signature widens to the seat's own hand
+and each seat's points taken, both of which every seat at the live table
+sees.  Nothing about hidden hands or the void table: the scorer *cannot*
+out-inform the field.  And it must be
 screened as a rollout policy, not as a player: the question is whether
 `mc:128` with the new rollouts beats `mc:128` with greedy rollouts, and
 only secondarily whether the new `HeuristicBot` beats the old.
@@ -259,8 +320,13 @@ the tournament rerun, not a ship.
 ## Interactions
 
 - P1 and P2 are mutually exclusive in the long run: a fitted policy
-  subsumes the lead rules, and P1's arena legs are cheap evidence about
+  subsumes the lead rule, and P1's arena leg is cheap evidence about
   which features P2 should carry.
+- S1 and S3 compose: S1 changes how much each world is worth to the
+  gate, S3 where the worlds go.  Screen them separately; S3's probe runs
+  on the shipped sampler.
+- P1 moves every rollout, so a P1 ship re-baselines S1 and S3.  Run the
+  S probes first or rerun them after.
 
 ## Appendix — measurement boilerplate
 
