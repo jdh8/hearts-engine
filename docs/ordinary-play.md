@@ -1,8 +1,9 @@
 # Ordinary play — search throughput, sample efficiency, and the rollout policy
 
 **Status: OPEN (2026-09-29, revised against the code the same day).**
-P1 shipped and S3 was cut on 2026-09-29 (results in their sections).
-S1, T2 and P2 are still unbuilt.  This is the campaign
+P1 shipped and S3 was cut on 2026-09-29 (results in their sections);
+S1 and T2 were cut the same day on S3's result without being built.
+P2 is what remains.  This is the campaign
 [cfr-gap.md](cfr-gap.md) closed into: with every moon mechanism measured
 or ruled out, the remaining Deep CFR gap is the
 ordinary-play residue (about `+0.2` payoff per seat-deal), and the one
@@ -87,19 +88,17 @@ Function names, not line numbers.
 
 | # | Proposal | Touches | Class | Status |
 | --- | --- | --- | --- | --- |
-| T2 | coarser parallel tasks | `score_worlds` | throughput, sequential consumers only | open |
-| S1 | stratify worlds by the Q♠ holder | sampler, `beats` | sample efficiency | open, probe first |
+| T2 | coarser parallel tasks | `score_worlds` | throughput, sequential consumers only | **cut** — compute buys nothing |
+| S1 | stratify worlds by the Q♠ holder | sampler, `beats` | sample efficiency | **cut** — capped below the compute lever |
 | S3 | spend the budget where compute pays | `score` | sample efficiency | **cut** — nothing to reallocate |
 | P1 | keep a high spade guarded | `greedy_play` | policy | **shipped** |
-| P2 | a distilled rollout policy | `greedy_play`, new offline tooling | policy, high ceiling | open, last |
+| P2 | a distilled rollout policy | `greedy_play`, new offline tooling | policy, high ceiling | open, stage 0 next |
 
-Suggested order: the S1 and S3 probes first — each is temporary
-instrumentation or one arena leg, and each can kill its proposal before
-anything ships; P1 as one cheap arena leg alongside; T2 only when a
-tournament rerun's wall time is ours rather than the shim's; P2 as its
-own campaign.  S3 has answered its question: the late tricks carry
-none of `mc:256`'s gain, so P2's `mc:256` labels are worth most on the
-early tricks.
+Order now: P2 alone.  S3 priced the whole compute lever at about
+`+0.006` rank for twice the worlds, and that single number sank both
+S1 and T2 (their sections say how), so the rollout policy is the
+lever left.  S3 also says the late tricks carry none of `mc:256`'s
+gain, so P2's `mc:256` labels are worth most on the early tricks.
 
 **Cut before building (2026-09-29).**  T0 (profile the sampler) only
 gated T1 and T3, and changed no decision on its own.  T1 (carry worlds
@@ -146,6 +145,12 @@ byte-identical across serial, old-parallel and new-parallel builds.
 of wall time dominates, T2 has no consumer and is cut unbuilt; if built,
 under +5% on our share means rayon overhead was not the cost and the
 change is deleted as noise.
+
+**Result (2026-09-29): cut unbuilt.**  T2 changes no decision; its only
+payoffs are wall time spent on more worlds, which S3 priced at about
+`+0.006` rank per doubling, and shorter tournament reruns, which is a
+convenience.  Revive it only if a rerun is slow and the split shows the
+time is ours.
 
 ### S1 — stratify worlds by the Q♠ holder
 
@@ -202,6 +207,16 @@ measured, not assumed.
 
 **Kill criterion.**  Probe share under 20%; built, gate SE not reduced,
 or `rank` negative beyond 2 SE.
+
+**Result (2026-09-29): cut unbuilt, the probe not run.**  Stratification
+changes no mean; it only shrinks the variance the gate sees.  Removing a
+share `f` of that variance is worth exactly `1/(1 − f)` times the worlds,
+so S1 is a compute lever, and S3 priced that lever at about `+0.006 ±
+0.003` rank for a doubling.  At the probe's own 20% bar S1 is worth 1.25×
+the worlds; merely matching `mc:256`'s gain needs `f ≥ 50%`, and only on
+the play decisions where the queen is still unseen, before paying for the
+extra hand draws.  The ceiling sits below a lever already measured as
+weak, so no probe result could make S1 worth building.
 
 ### S3 — spend the budget where compute pays
 
@@ -360,7 +375,12 @@ screened as a rollout policy, not as a player: the question is whether
 `mc:128` with the new rollouts beats `mc:128` with greedy rollouts, and
 only secondarily whether the new `HeuristicBot` beats the old.
 
-**Measurement.**  Three stages.  (1) Offline: held-out agreement with
+**Measurement.**  Four stages.  (0) Sensitivity, before any logging or
+fitting: `mc:128` with a deliberately *worse* rollout policy (uniform
+random legal, or the pre-point-aware greedy) against `mc:128` with the
+shipped one, 2,000 seed-0 blocks, the knob temporary.  If making the
+policy worse barely costs `rank`, making it better will not pay either,
+and P2 is cut here.  (1) Offline: held-out agreement with
 `mc:256`'s choice, against greedy's agreement as the floor.  (2) Arena:
 `mc:128`-new vs `mc:128`-old over 2,000 seed-0 blocks, `rank` primary,
 `moons` watched, throughput within 5% (the scorer runs on every card of
@@ -369,22 +389,25 @@ blocks; then the 1,600-deal Deep CFR rerun on seed 1, since the
 ordinary-play residue against *him* is the number this campaign is
 named for.
 
-**Kill criterion.**  Stage 1 not clearly above greedy's agreement, or
-stage 2 `rank` not positive at 2 SE, or throughput loss beyond 5%.  A
-positive `rank` with a falling moon column is a *trade*, to be priced on
-the tournament rerun, not a ship.
+**Kill criterion.**  Stage 0 costing under 2 SE, stage 1 not clearly
+above greedy's agreement, stage 2 `rank` not positive at 2 SE, or
+throughput loss beyond 5%.  A positive `rank` with a falling moon
+column is a *trade*, to be priced on the tournament rerun, not a ship.
 
 ## Interactions
 
 - P1 and P2 are mutually exclusive in the long run: a fitted policy
   subsumes the lead rule, and P1's arena leg is cheap evidence about
   which features P2 should carry.
-- S1 and S3 compose: S1 changes how much each world is worth to the
-  gate, S3 where the worlds go.  Screen them separately; S3's probe runs
-  on the shipped sampler.
-- P1 moves every rollout, so a P1 ship re-baselines S1 and S3.  The S3
-  probe ran on the pre-P1 policy, and P1 is neutral for the search, so
-  the cut stands.  S1's probe runs on the P1 policy.
+- S1, S3 and T2 all spend or save compute, so S3's pricing of the
+  compute lever closed all three.
+- P1 moves every rollout, so a P1 ship re-baselines S3.  The S3 probe
+  ran on the pre-P1 policy, and P1 is neutral for the search, so the cut
+  stands.
+- P1 was neutral for the search even though it helps the live heuristic
+  by 4.6 SE: rollouts only price candidates, and the gated incumbent
+  moves with the policy.  P2 may hit the same wall, which is why its
+  measurement opens with stage 0.
 
 ## Appendix — measurement boilerplate
 

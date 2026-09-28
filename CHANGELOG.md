@@ -348,6 +348,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **Ordinary-play campaign: S1 and T2 cut unbuilt.**  Both are compute
+  levers, and S3 priced compute at about `+0.006` rank per doubling of
+  worlds.  S1's stratification removes a variance share `f`, which is
+  worth `1/(1 − f)` times the worlds; it needs `f ≥ 50%` just to match
+  `mc:256`, so its probe was not run.  T2 changes no decision and only
+  saves wall time.  P2 remains, led by a rollout-sensitivity leg, since
+  P1 showed that a better live rule can be neutral inside the search.
 - **Ordinary-play campaign: P1 shipped, S3 cut.**  P1 is above.  S3's
   probe split the `mc:256`-over-`mc:128` gain by decision.  Pooled over
   14,000 blocks on three seeds the whole lever is worth only about
