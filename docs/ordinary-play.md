@@ -57,10 +57,6 @@ Function names, not line numbers.
   `Round::play`.  Early in a round that is nothing; on trick eleven it is
   ten tricks of replay in front of two tricks of rollout.  Nothing is
   cached between decisions: the next trick resamples from zero.
-- **`sample_hands`** backtracks all unseen cards, then *rejects* the whole
-  sample with probability `1 − 0.75^misses` against the received pass.  A
-  three-miss world — an opponent who passes nothing like us — survives
-  42% of the time; the rest of the work is discarded.
 - **`score_worlds`** rolls candidates in growing batches (32, 32, 64, …)
   with challenger elimination, and in the `parallel` build each
   `(candidate, batch)` is its own `par_iter` of 32 small jobs.
@@ -78,71 +74,24 @@ Function names, not line numbers.
 
 | # | Proposal | Touches | Class | Status |
 | --- | --- | --- | --- | --- |
-| T0 | profile world construction vs rollout | none (measurement) | enabler | open |
-| T1 | carry worlds across decisions | sampler | throughput | open, gated on T0 |
 | T2 | coarser parallel tasks | `score_worlds` | throughput | open |
-| T3 | weight instead of reject | sampler, `beats` | throughput | open |
 | S1 | stratify worlds by the Q♠ holder | sampler | sample efficiency | open |
-| S2 | enumerate worlds near the end | sampler | sample efficiency | open |
 | S3 | budget in rollout tricks, not worlds | `score` | sample efficiency | open |
 | P1 | cheap greedy lead rules | `greedy_play` | policy | open |
 | P2 | a distilled rollout policy | `greedy_play`, new offline tooling | policy, high ceiling | open, last |
 
-Suggested order: T0 first because it is a measurement; then S1 and S3
-together, both small and policy-neutral; T2 whenever the arena or the
-tournament harness is the bottleneck; T1 and T3 only if T0 says the
-sampler is worth it; P1 as cheap arena legs; P2 as its own campaign once
-the throughput tier has bought it enough samples to be screened at
-`mc:256`-equivalent cost.
+Suggested order: S1 and S3 first, both small and policy-neutral; T2
+whenever the arena or the tournament harness is the bottleneck; P1 as
+cheap arena legs; P2 as its own campaign once S3 has bought it enough
+samples to be screened at `mc:256`-equivalent cost.
 
-### T0 — profile world construction against rollout
-
-**Mechanism.**  None; instrument.  Time `sample_worlds` and the
-`score_worlds` loop separately over a full arena round at `mc:128`,
-bucketed by trick number, and report the sampler's share of decision time
-per trick.  A `perf record` of the arena's greedy-field run is enough if
-the two functions do not inline into each other; otherwise a temporary
-pair of `Instant` accumulators behind an env var, deleted afterwards.
-
-**Measurement.**  The output *is* the result: a thirteen-row table of
-sampler share by trick.  If the sampler is under ~15% everywhere, T1 and
-T3 close unbuilt and this row records why.
-
-**Kill criterion.**  None; it changes no decision.  The instrumentation
-must not survive the measurement.
-
-### T1 — carry worlds across decisions
-
-**Mechanism.**  Keep the worlds sampled for the previous decision on the
-bot.  At the next decision of the same round, a world is still consistent
-iff every card played since then was in the hand the world assigned to the
-seat that played it and the seat's void table still admits it — check by
-replaying only the new plays on the retained `Round`.  Keep the survivors,
-resample the shortfall from scratch, and shuffle the union so batch order
-is not "old worlds first".
-
-The soundness argument: the retained set was a sample from the posterior
-at time *t*; filtering it by the observations since is rejection sampling
-from the posterior at *t+1*, exactly the estimator the fresh sampler
-implements — *provided* the pass likelihood is the only soft weight (it is
-applied at *t* and is unchanged by later plays).  The survivors are
-therefore unbiased; only the top-up sees the sampler.  The `parallel`
-build stays bit-identical because world order is a function of the seeded
-RNG exactly as before.
-
-**Coupling.**  Play-side only.  `assess` and `pass_cards` see fresh worlds
-as today; a new round clears the cache.  The cache must be dropped on
-`IllegalAction` retries too, since the view it was sampled against never
-advanced.
-
-**Measurement.**  Repeated 500-block arena throughput on seeds 0/1/2, then
-a 2,000-block seed-0 screen for `rank`, `points`, `moons` — the decisions
-change (different world sets), so this is an A/B, not a self-check.
-Ship gate is the house one: `rank` and `win` within −2 SE at confirm, and
-the throughput gain that justifies the complexity in the first place.
-
-**Kill criterion.**  Throughput below +10% at `mc:128`, or any negative
-`rank` beyond 2 SE.
+**Cut before building (2026-09-29).**  T0 (profile the sampler) only
+gated T1 and T3, and changed no decision on its own.  T1 (carry worlds
+across decisions) and T3 (pass-likelihood weights instead of rejection)
+both rewire the sampler or every `Scored` consumer for a throughput gain
+nobody has shown is there, and T3 pays for it in effective sample size.
+S2 (enumerate worlds near the end) targets the late decisions S3 already
+floods with cheap worlds.
 
 ### T2 — coarser parallel tasks
 
@@ -164,30 +113,6 @@ serial, old-parallel and new-parallel builds.
 
 **Kill criterion.**  Any CSV difference is a bug.  Throughput below +5%
 means rayon overhead was not the cost and the change is deleted as noise.
-
-### T3 — weight instead of reject
-
-**Mechanism.**  `sample_hands` returns every consistent world together with
-its pass likelihood `0.75^misses` instead of rejecting on it.  Each world's
-equity and points enter the paired statistics with that weight: weighted
-means in `beats` and `contested`, a weighted variance for the standard
-error, and a weighted moon count against the majority bar.  The estimator
-is the same importance-sampling target the rejection sampler draws from,
-with no discarded backtracking work.
-
-**Coupling.**  Every consumer of `Scored` becomes weight-aware, including
-`assess` and the majority bar in `recommended`.  A world of weight 0.42
-against one of weight 1 also changes the *effective* sample size the gate
-sees; a proposal that only buys throughput but widens the gate's
-uncertainty has not bought anything, so effective sample size (the
-`(Σw)² / Σw²` count) must be reported alongside throughput.  Pass-phase
-worlds carry no weight and stay as they are.
-
-**Measurement.**  Throughput as T1; a 2,000-block seed-0 screen for
-`rank`; the T0 table says beforehand how much there is to win.
-
-**Kill criterion.**  Throughput gain below the effective-sample-size loss,
-or `rank` negative beyond 2 SE.
 
 ### S1 — stratify worlds by the Q♠ holder
 
@@ -222,33 +147,6 @@ CSV changes, since worlds do.
 
 **Kill criterion.**  Per-decision SE not reduced, or `rank` negative
 beyond 2 SE.
-
-### S2 — enumerate worlds near the end
-
-**Mechanism.**  Once the number of consistent deals of the unseen cards
-into the three hidden hands is at or below the sample budget — a
-multinomial coefficient over the void-constrained rooms, computable
-exactly and typically under 128 from about six unseen cards — replace
-sampling with enumeration: every consistent world once, equally
-weighted (or pass-likelihood weighted after T3).  The rollout policy is
-unchanged, so this is *not* the maxⁿ null: nobody plays with perfect
-information, the search merely stops paying sampling noise for a
-posterior it can afford to write down.
-
-**Coupling.**  Sampler only.  The gate's paired test over an enumerated
-set is a population statistic, not a sample one; `beats` still works
-(the SE goes to the population spread, which is what the gate should see
-when the only remaining uncertainty is the opponents' play).  Enumerated
-worlds must respect the same world order across serial and parallel
-builds — generate them deterministically.
-
-**Measurement.**  2,000-block seed-0 screen, `rank` primary.  Also worth
-reading: the share of decisions that enumerate, by trick.  Late tricks
-are where the queen and the last hearts land, so the leverage may be
-larger than the trick count suggests.
-
-**Kill criterion.**  `rank` negative beyond 2 SE, or a throughput loss
-beyond 5% (enumeration must not exceed the sample budget).
 
 ### S3 — budget in rollout tricks, not worlds
 
@@ -360,13 +258,6 @@ the tournament rerun, not a ship.
 
 ## Interactions
 
-- T1 and S1 both touch `sample_hands`'s ordering; S1's round-robin must
-  apply to the top-up, not the retained survivors, or the strata drift.
-- T3 changes what S2's enumerated worlds weigh and what S1's strata
-  weights mean; if T3 ships, S1 and S2 are re-derived against weighted
-  marginals before they are measured.
-- S3 raises the world count exactly where S2 enumerates; with both on,
-  S2's threshold is the S3-scaled budget.
 - P1 and P2 are mutually exclusive in the long run: a fitted policy
   subsumes the lead rules, and P1's arena legs are cheap evidence about
   which features P2 should carry.
