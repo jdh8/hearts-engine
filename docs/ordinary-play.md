@@ -3,7 +3,7 @@
 **Status: OPEN (2026-09-29, revised against the code the same day).**
 P1 shipped and S3 was cut on 2026-09-29 (results in their sections);
 S1 and T2 were cut the same day on S3's result without being built.
-P2 is what remains.  This is the campaign
+P2 is what remains; its stage 0 passed, so stage 1 is next.  This is the campaign
 [cfr-gap.md](cfr-gap.md) closed into: with every moon mechanism measured
 or ruled out, the remaining Deep CFR gap is the
 ordinary-play residue (about `+0.2` payoff per seat-deal), and the one
@@ -92,7 +92,7 @@ Function names, not line numbers.
 | S1 | stratify worlds by the Q♠ holder | sampler, `beats` | sample efficiency | **cut** — capped below the compute lever |
 | S3 | spend the budget where compute pays | `score` | sample efficiency | **cut** — nothing to reallocate |
 | P1 | keep a high spade guarded | `greedy_play` | policy | **shipped** |
-| P2 | a distilled rollout policy | `greedy_play`, new offline tooling | policy, high ceiling | open, stage 0 next |
+| P2 | a distilled rollout policy | `greedy_play`, new offline tooling | policy, high ceiling | open, stage 0 passed |
 
 Order now: P2 alone.  S3 priced the whole compute lever at about
 `+0.006` rank for twice the worlds, and that single number sank both
@@ -394,6 +394,27 @@ above greedy's agreement, stage 2 `rank` not positive at 2 SE, or
 throughput loss beyond 5%.  A positive `rank` with a falling moon
 column is a *trade*, to be priced on the tournament rerun, not a ship.
 
+**Stage 0 result (2026-09-29): passed.**  A temporary thread-local mode
+swapped the policy inside `rollout_play`'s ordinary branches only.  The
+incumbent, the shoot line and the field stayed shipped.  Each row is
+`mc:128` with the swapped rollouts minus plain `mc:128`, paired, in a
+greedy field.  The knob is deleted.
+
+| Rollout policy | seed | `rank` | `points` | `win` | `moons` |
+| --- | --- | --- | --- | --- | --- |
+| pre-`d18d8d0` greedy (no P1) | 0 (2,000) | −0.0197 ± 0.0107 | −0.071 ± 0.104 | −0.0012 ± 0.0046 | +0.0044 ± 0.0023 |
+| pre-`d18d8d0` greedy (no P1) | 1 (6,000) | −0.0202 ± 0.0062 | −0.157 ± 0.060 | −0.0026 ± 0.0026 | +0.0032 ± 0.0013 |
+| uniform random legal | 0 (2,000) | −0.3319 ± 0.0123 | −2.982 ± 0.115 | −0.1028 ± 0.0049 | −0.0328 ± 0.0024 |
+
+One rule-sized step back in rollout quality costs `0.020` rank at 3.3 SE,
+about three times what a doubling of worlds buys (S3).  So the search
+does feel its rollout policy.  P1's null was about P1: one narrow lead
+rule, not rollouts in general.  The old policy's cost comes with the
+old profile: more moons, and `win` flat, the same as the point-aware
+change's own ledger.  That warns stage 2 to expect a `rank` gain paid
+partly in moons.  Random rollouts show the lever is steep at the bottom,
+as expected; they say nothing about the top.
+
 ## Interactions
 
 - P1 and P2 are mutually exclusive in the long run: a fitted policy
@@ -406,8 +427,8 @@ column is a *trade*, to be priced on the tournament rerun, not a ship.
   stands.
 - P1 was neutral for the search even though it helps the live heuristic
   by 4.6 SE: rollouts only price candidates, and the gated incumbent
-  moves with the policy.  P2 may hit the same wall, which is why its
-  measurement opens with stage 0.
+  moves with the policy.  P2's stage 0 then showed the search does feel
+  a rule-sized rollout change (−3.3 SE), so P1's null was specific to P1.
 
 ## Appendix — measurement boilerplate
 

@@ -348,6 +348,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **Ordinary-play campaign: P2 stage 0 passed.**  Rolling out `mc:128`
+  with the pre-point-aware greedy policy, with the incumbent and the field
+  left unchanged, costs `−0.0202 ± 0.0062` rank on 6,000 seed-1 blocks
+  (`−0.0197 ± 0.0107` on seed 0).  That is three times what a doubling of
+  worlds buys, so rollout quality reaches the search and a distilled policy
+  is worth building.  Uniform random rollouts cost `−0.33` rank.  The
+  temporary probe knob is deleted.
 - **Ordinary-play campaign: S1 and T2 cut unbuilt.**  Both are compute
   levers, and S3 priced compute at about `+0.006` rank per doubling of
   worlds.  S1's stratification removes a variance share `f`, which is
