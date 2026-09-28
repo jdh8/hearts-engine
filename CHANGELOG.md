@@ -348,6 +348,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **Ordinary-play campaign: P2 cut at stage 2; campaign closed.**  The
+  stage-1 100 × 31 ranker was exported to Rust (it matches LightGBM's
+  argmax on all 61,045 seed-1 decisions) and swapped into `mc:128`'s
+  ordinary rollouts.  Over 2,000 seed-0 blocks it moves `rank` by
+  `−0.0094 ± 0.0106`, `win` by `+0.0051 ± 0.0045` and `moons` by
+  `+0.0138 ± 0.0023` (+5.9 SE).  The rollouts also ran about 70× slower.
+  Better agreement with `mc:256` did not make the rollouts better.  The
+  probe knob and the export are deleted.
 - **Ordinary-play campaign: P2 stage 1 passed, on a tree ensemble.**  A
   new `distill` example logs `mc:256`'s gated play picks in a greedy
   field and fits a linear card scorer; `examples/distill.py` fits a

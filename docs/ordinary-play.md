@@ -1,9 +1,10 @@
 # Ordinary play — search throughput, sample efficiency, and the rollout policy
 
-**Status: OPEN (2026-09-29, revised against the code the same day).**
-P1 shipped and S3 was cut on 2026-09-29 (results in their sections);
-S1 and T2 were cut the same day on S3's result without being built.
-P2 is what remains; stages 0 and 1 passed, so stage 2 is next.  This is the campaign
+**Status: CLOSED (2026-09-29).**  P1 shipped and S3 was cut on
+2026-09-29 (results in their sections); S1 and T2 were cut the same day
+on S3's result without being built.  P2 was cut at stage 2 the same day:
+the distilled rollouts move `rank` by −0.9 SE, move `moons` by +5.9 SE,
+and run about 70× slower.  This is the campaign
 [cfr-gap.md](cfr-gap.md) closed into: with every moon mechanism measured
 or ruled out, the remaining Deep CFR gap is the
 ordinary-play residue (about `+0.2` payoff per seat-deal), and the one
@@ -92,9 +93,9 @@ Function names, not line numbers.
 | S1 | stratify worlds by the Q♠ holder | sampler, `beats` | sample efficiency | **cut** — capped below the compute lever |
 | S3 | spend the budget where compute pays | `score` | sample efficiency | **cut** — nothing to reallocate |
 | P1 | keep a high spade guarded | `greedy_play` | policy | **shipped** |
-| P2 | a distilled rollout policy | `greedy_play`, new offline tooling | policy, high ceiling | open, stages 0–1 passed |
+| P2 | a distilled rollout policy | `greedy_play`, new offline tooling | policy, high ceiling | **cut** at stage 2 — null `rank`, 70× cost |
 
-Order now: P2 alone.  S3 priced the whole compute lever at about
+Order, as run: P2 alone, cut at stage 2.  S3 priced the whole compute lever at about
 `+0.006` rank for twice the worlds, and that single number sank both
 S1 and T2 (their sections say how), so the rollout policy is the
 lever left.  S3 also says the late tricks carry none of `mc:256`'s
@@ -466,6 +467,40 @@ bar would bind.  Agreement is also a proxy: it measures single decisions
 at `mc`'s own positions.  Rollouts play all four seats from positions the
 policy reaches itself, and nothing here sees the moon column.
 
+**Stage 2 result (2026-09-29): failed; P2 is cut.**  The `100 × 31`
+ranker, trained on all of seed 0's labels, was exported as Rust
+constants.  A temporary `MonteCarloBot` knob swapped it into
+`rollout_play`'s ordinary branches; the incumbent, the shoot line and the
+field stayed shipped.  The Rust port matched LightGBM's argmax on all
+61,045 seed-1 decisions, so the result is the model's, not a port
+defect.  `mc:128` with the ensemble's rollouts minus plain `mc:128`,
+2,000 seed-0 blocks, paired, in a greedy field:
+
+| `rank` | `points` | `win` | `not-last` | `moons` |
+| --- | --- | --- | --- | --- |
+| −0.0094 ± 0.0106 | +0.063 ± 0.105 | +0.0051 ± 0.0045 | −0.0068 ± 0.0037 | +0.0138 ± 0.0023 |
+
+It fails both kill criteria.  `rank` is not positive, and on 64 blocks
+the ensemble's rollouts ran about 70× slower than greedy's (43.7 s
+against 0.62 s wall) — fourteen times the 5% bar, before any fair
+comparison at equal time.  Cheaper ensembles cannot rescue it, because
+the ceiling is already null at equal worlds.  The one clear effect is
+the moon column: the measured seat completes 29% more moons (0.047 →
+0.061 per round) for no gain in `rank`, with `not-last` down 1.8 SE.  A
+likely cause, not measured: the labels exclude the moon-defense region
+and moon plans, yet the ensemble plays everywhere in a rollout, including
+the trigger region it never saw, and so it defends worse than greedy's
+duckers.  That is the opponent-moon prior again.  Worlds whose
+defenders are softer than the live field's price shots as too cheap.
+
+Stage 1's `+0.06` agreement did not turn into rollout quality.  Stage 0
+showed that a policy one rule *worse* costs `rank`.  Nothing here shows
+that a policy closer to the search's own picks gains it.  Matching
+`mc:256` at `mc`'s positions is a different objective from continuing
+lines in the way the live field does.  The probe knob and
+the export are deleted.  The tooling stays: `distill gen` and
+`distill.py` are the only measure of how far a policy is from the search.
+
 ## Interactions
 
 - P1 and P2 are mutually exclusive in the long run: a fitted policy
@@ -480,6 +515,11 @@ policy reaches itself, and nothing here sees the moon column.
   by 4.6 SE: rollouts only price candidates, and the gated incumbent
   moves with the policy.  P2's stage 0 then showed the search does feel
   a rule-sized rollout change (−3.3 SE), so P1's null was specific to P1.
+- The rollout lever is steep on the way down and flat on the way up.
+  Stage 0 costs `−0.020` for one rule backwards; stage 2's distilled
+  policy gains nothing and moves the moon column.  Hand-written rules
+  like P1 stay the way to change rollouts, each screened for the search
+  and the moon column separately.
 
 ## Appendix — measurement boilerplate
 
