@@ -67,3 +67,7 @@ required-features = ["rand"]
 
 [profile.dev.package."*"]
 opt-level = 2
+
+[[example]]
+name = "distill"
+required-features = ["rand"]

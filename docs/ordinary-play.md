@@ -3,7 +3,7 @@
 **Status: OPEN (2026-09-29, revised against the code the same day).**
 P1 shipped and S3 was cut on 2026-09-29 (results in their sections);
 S1 and T2 were cut the same day on S3's result without being built.
-P2 is what remains; its stage 0 passed, so stage 1 is next.  This is the campaign
+P2 is what remains; stages 0 and 1 passed, so stage 2 is next.  This is the campaign
 [cfr-gap.md](cfr-gap.md) closed into: with every moon mechanism measured
 or ruled out, the remaining Deep CFR gap is the
 ordinary-play residue (about `+0.2` payoff per seat-deal), and the one
@@ -92,7 +92,7 @@ Function names, not line numbers.
 | S1 | stratify worlds by the Q♠ holder | sampler, `beats` | sample efficiency | **cut** — capped below the compute lever |
 | S3 | spend the budget where compute pays | `score` | sample efficiency | **cut** — nothing to reallocate |
 | P1 | keep a high spade guarded | `greedy_play` | policy | **shipped** |
-| P2 | a distilled rollout policy | `greedy_play`, new offline tooling | policy, high ceiling | open, stage 0 passed |
+| P2 | a distilled rollout policy | `greedy_play`, new offline tooling | policy, high ceiling | open, stages 0–1 passed |
 
 Order now: P2 alone.  S3 priced the whole compute lever at about
 `+0.006` rank for twice the worlds, and that single number sank both
@@ -414,6 +414,57 @@ old profile: more moons, and `win` flat, the same as the point-aware
 change's own ledger.  That warns stage 2 to expect a `rank` gain paid
 partly in moons.  Random rollouts show the lever is steep at the bottom,
 as expected; they say nothing about the top.
+
+**Stage 1 result (2026-09-29): passed, on a tree ensemble — the
+linear scorer is clearly short.**  `examples/distill.rs gen` seats one
+`mc:256` among three greedy players over arena blocks and logs every play
+decision the search weighs.  The label is `assess`'s gated pick, taken as
+the equivalence class `play_candidates` collapses it into.  Forced plays,
+fully collapsed legal sets, the moon-defense trigger region and moon plans
+are skipped.  A second, independently seeded search labels each decision
+too; its agreement is the scale of the label's noise, not a bound on it.
+Seed 0: 10,000 blocks, 306,393 decisions, one block in five held out;
+seed 1: 2,000 fresh blocks, 61,045 decisions, for confirmation.  Every
+feature reads only the seat's hand, the legal set, the trick, `played`
+and points taken, and one of them is greedy's own pick.
+
+The search departs from greedy on 27.8% of the decisions it weighs.  By
+situation: leads 41%, follows 28–30% at every seat, discards 16%.  The
+misses have visible shapes.  On trick 1 and the first round of a suit,
+the search sheds high cards (K♣ over 2♣, Q♣ over 9♣); greedy ducks.  It
+leads middle spades, not the lowest, to hunt the queen.  Greedy's
+shortest-suit lead will lead a singleton Q♠; the search never does.
+While the seat holds every point so far, it keeps its hearts when void.
+
+| Held-out agreement with `mc:256` | seed 0 | seed 1 (trained on seed 0) |
+| --- | --- | --- |
+| twin `mc:256` search (noise scale) | 0.9055 ± 0.0012 | — |
+| greedy (the floor) | 0.7203 ± 0.0018 | 0.7236 |
+| linear, 45 features (`distill fit`) | +0.0091 ± 0.0009 | — |
+| LightGBM ranker, 10 trees × 7 leaves | +0.0029 ± 0.0005 | — |
+| 30 × 7 | +0.0160 ± 0.0009 | — |
+| 30 × 15 | +0.0339 ± 0.0012 | — |
+| 100 × 15 | +0.0488 ± 0.0015 | — |
+| 100 × 31 | +0.0622 ± 0.0015 | +0.0605 ± 0.0015 |
+| 300 × 63 | +0.0813 ± 0.0016 | +0.0784 ± 0.0017 |
+| 1,000 × 63 | +0.0837 ± 0.0017 | — |
+
+Rows below greedy are differences from it, paired, with block-clustered
+SEs.  The ensembles are `examples/distill.py`, offline only, with
+learning rate 0.1 throughout, so the few-tree rows are under-shrunk rather
+than a capacity limit.  The linear scorer is 10 SE above greedy but
+recovers 5% of the gap to the twin search: train and test agree to a
+tenth of a point, so it is underfit, not noisy.  The trees find the signal
+the hand features miss, and it holds on a fresh seed.  The curve is steep
+and saturates near `+0.08`.  `100 × 31` keeps three quarters of that and
+is about 3,000 split nodes.
+
+This hands stage 2 its real question: cost.  The ensemble is evaluated
+on every legal card of every rollout play, where greedy is a handful of
+bit operations.  So it is nowhere near free, and stage 2's 5% throughput
+bar would bind.  Agreement is also a proxy: it measures single decisions
+at `mc`'s own positions.  Rollouts play all four seats from positions the
+policy reaches itself, and nothing here sees the moon column.
 
 ## Interactions
 

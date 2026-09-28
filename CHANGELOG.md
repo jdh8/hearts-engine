@@ -348,6 +348,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **Ordinary-play campaign: P2 stage 1 passed, on a tree ensemble.**  A
+  new `distill` example logs `mc:256`'s gated play picks in a greedy
+  field and fits a linear card scorer; `examples/distill.py` fits a
+  LightGBM ranker to the same data, offline only.  Every feature is one a
+  rollout seat may read.  The search departs from greedy on 27.8% of the
+  decisions it weighs, and an independent `mc:256` search agrees with it
+  90.6% of the time.  Greedy agrees 72.0%.  The linear scorer adds only
+  `+0.009 ± 0.001` and is underfit.  A 100-tree, 31-leaf ensemble adds
+  `+0.062 ± 0.002`, and `+0.061` on a fresh seed; 300 × 63 adds `+0.08`.
+  Stage 2 has to price evaluating the ensemble inside every rollout.
 - **Ordinary-play campaign: P2 stage 0 passed.**  Rolling out `mc:128`
   with the pre-point-aware greedy policy, with the incumbent and the field
   left unchanged, costs `−0.0202 ± 0.0062` rank on 6,000 seed-1 blocks
