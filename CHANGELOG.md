@@ -335,6 +335,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **`docs/ordinary-play.md` opens the ordinary-play campaign.**  The
+  queue the Deep CFR moon campaign closed into, in three tiers: throughput
+  (T0 profile the sampler against the rollout, T1 carry worlds across
+  decisions, T2 coarser `parallel` tasks, T3 pass-likelihood weights
+  instead of rejection), sample efficiency (S1 stratify worlds by the Q♠
+  holder, S2 enumerate consistent worlds near the end of a round, S3 a
+  budget in rollout tricks rather than worlds), and the rollout policy
+  (P1 two cheap greedy lead rules, P2 a policy distilled from `mc:256`
+  decisions).  Each carries its mechanism, coupling, measurement and kill
+  criterion; the priors table walls off the play-inference, opponent-moon
+  and maxⁿ nulls.  Nothing is built.
 - **Anti-moon passing was refuted at confirmation and ships no behavior
   change.**  The permanent CFR CSV analyzer now puts P4's 125/193 fed-moon
   headline in context: 94.5% of all 2,400 MC passes already carried a
