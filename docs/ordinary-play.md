@@ -1,7 +1,8 @@
 # Ordinary play — search throughput, sample efficiency, and the rollout policy
 
 **Status: OPEN (2026-09-29, revised against the code the same day).**
-Nothing here is built or measured.  This is the campaign
+P1 shipped and S3 was cut on 2026-09-29 (results in their sections).
+S1, T2 and P2 are still unbuilt.  This is the campaign
 [cfr-gap.md](cfr-gap.md) closed into: with every moon mechanism measured
 or ruled out, the remaining Deep CFR gap is the
 ordinary-play residue (about `+0.2` payoff per seat-deal), and the one
@@ -88,16 +89,17 @@ Function names, not line numbers.
 | --- | --- | --- | --- | --- |
 | T2 | coarser parallel tasks | `score_worlds` | throughput, sequential consumers only | open |
 | S1 | stratify worlds by the Q♠ holder | sampler, `beats` | sample efficiency | open, probe first |
-| S3 | spend the budget where compute pays | `score` | sample efficiency | open, probe first |
-| P1 | keep a high spade guarded | `greedy_play` | policy | open |
+| S3 | spend the budget where compute pays | `score` | sample efficiency | **cut** — nothing to reallocate |
+| P1 | keep a high spade guarded | `greedy_play` | policy | **shipped** |
 | P2 | a distilled rollout policy | `greedy_play`, new offline tooling | policy, high ceiling | open, last |
 
 Suggested order: the S1 and S3 probes first — each is temporary
 instrumentation or one arena leg, and each can kill its proposal before
 anything ships; P1 as one cheap arena leg alongside; T2 only when a
 tournament rerun's wall time is ours rather than the shim's; P2 as its
-own campaign once S3 has said which decisions its screening budget
-should go to.
+own campaign.  S3 has answered its question: the late tricks carry
+none of `mc:256`'s gain, so P2's `mc:256` labels are worth most on the
+early tricks.
 
 **Cut before building (2026-09-29).**  T0 (profile the sampler) only
 gated T1 and T3, and changed no decision on its own.  T1 (carry worlds
@@ -241,6 +243,38 @@ shoot candidate clears the majority bar.
 **Kill criterion.**  Probe gain evenly split; built, `rank` not positive
 at 2 SE on confirm, or any `win` regression beyond 2 SE.
 
+**Result (2026-09-29): cut.**  The probe used a temporary
+`samples_from(trick, n)` knob, applied to play decisions only, and each
+leg was paired against plain `mc:128` over 6,000 blocks.  The knob is
+deleted.
+
+| Leg (pass / tricks 1–6 / tricks 7–13) | seed | `rank` | `win` |
+| --- | --- | --- | --- |
+| 256 / 256 / 256 (`mc:256`) | 0 (2,000) | +0.0027 ± 0.0073 | +0.0046 ± 0.0033 |
+| 256 / 256 / 256 | 1 | +0.0090 ± 0.0042 | +0.0049 ± 0.0019 |
+| 256 / 256 / 256 | 2 | +0.0044 ± 0.0043 | +0.0030 ± 0.0019 |
+| 256 / 256 / 128 | 1 | +0.0073 ± 0.0042 | +0.0044 ± 0.0019 |
+| 128 / 256 / 256 | 0 (2,000) | +0.0047 ± 0.0065 | +0.0047 ± 0.0029 |
+| 128 / 256 / 256 | 1 | +0.0010 ± 0.0036 | +0.0019 ± 0.0016 |
+| 256 / 128 / 128 | 1 | +0.0071 ± 0.0037 | +0.0033 ± 0.0016 |
+| 256 / 128 / 128 | 2 | −0.0011 ± 0.0037 | −0.0002 ± 0.0016 |
+| 128 / 128 / 256 | 0 (2,000) | −0.0004 ± 0.0016 | +0.0001 ± 0.0009 |
+| 128 / 128 / 256 | 1 | −0.0004 ± 0.0011 | +0.0004 ± 0.0005 |
+| 128 / 128 / 32 | 1 | −0.0029 ± 0.0015 | −0.0004 ± 0.0007 |
+| 128 / 128 / 32 | 2 | −0.0023 ± 0.0014 | −0.0005 ± 0.0007 |
+
+Pooled, the whole compute lever is about `+0.006 ± 0.003` rank and
+`+0.004 ± 0.001` win, for 65% more wall time (1,000 blocks: 9.2 s →
+15.2 s).  Tricks 7–13 are saturated at 128 worlds: widening them is a
+tight zero, but they are not oversupplied either, since cutting them to
+32 saves 13% of wall time and costs rank at about 2.6 SE pooled.  The
+remaining gain is split between the pass and tricks 1–6.  The pass-only
+leg's +1.9 SE on seed 1 did not replicate on seed 2, and that seed's
+full `mc:256` gain is itself only 1.0 SE.  No half carries the gain, so
+nothing can be reallocated.  The real lesson is the pooled size: at
+fixed wall-clock, compute is a weak lever for this campaign, and the
+rollout policy is the stronger one.
+
 ### P1 — keep a high spade guarded
 
 One arena leg, a one-condition change in `greedy_play`, knowledge-free so
@@ -270,6 +304,29 @@ a lead rule that keeps control cards may move it the other way.
 `mc:128` is the interesting failure — it would mean the rollout policy
 and the live policy want to part company, which is a design change, not
 a tweak.
+
+**Result (2026-09-29): shipped.**  The A/B used a temporary thread-local
+toggle, wrapped around each decision of the measured seat and sound in the
+serial MC build, where rollouts run on the deciding thread.  It is
+deleted.  Each row is paired against the same bot without the rule, in a
+greedy field.
+
+| Bot | seed 0 (2,000) `rank` | seed 1 (6,000) `rank` | seed 1 `win` | seed 1 `moons` |
+| --- | --- | --- | --- | --- |
+| `greedy` | +0.0143 ± 0.0043 | +0.0110 ± 0.0024 | +0.0027 ± 0.0008 | +0.0000 ± 0.0001 |
+| `newbie` (web Easy) | — | +0.0154 ± 0.0025 | +0.0043 ± 0.0009 | −0.0000 ± 0.0001 |
+| `mc:32` | — | −0.0003 ± 0.0049 | +0.0013 ± 0.0021 | +0.0020 ± 0.0010 |
+| `mc:128` | +0.0092 ± 0.0078 | −0.0013 ± 0.0046 | +0.0010 ± 0.0020 | +0.0014 ± 0.0009 |
+| `mc:256` | — | −0.0016 ± 0.0044 | −0.0007 ± 0.0020 | +0.0025 ± 0.0009 |
+
+The rule is a clear gain for the live heuristic and neutral for the
+search at every width, so it ships in both.  It lifts the MC bot's own
+completed moons by about 0.2 pp.  The interesting failure did not happen:
+the rollout policy and the live policy still want the same lead.  The
+search does not feel the change because rollouts only price the
+candidates, and the incumbent the gate protects moves with the policy.
+A spade-count threshold (the second leg) is not worth building for a
+neutral MC result.
 
 ### P2 — a distilled rollout policy
 
@@ -325,8 +382,9 @@ the tournament rerun, not a ship.
 - S1 and S3 compose: S1 changes how much each world is worth to the
   gate, S3 where the worlds go.  Screen them separately; S3's probe runs
   on the shipped sampler.
-- P1 moves every rollout, so a P1 ship re-baselines S1 and S3.  Run the
-  S probes first or rerun them after.
+- P1 moves every rollout, so a P1 ship re-baselines S1 and S3.  The S3
+  probe ran on the pre-P1 policy, and P1 is neutral for the search, so
+  the cut stands.  S1's probe runs on the P1 policy.
 
 ## Appendix — measurement boilerplate
 

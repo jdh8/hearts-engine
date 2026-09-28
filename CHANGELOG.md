@@ -112,6 +112,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The shared greedy play/rollout policy no longer leads low spades to
+  smoke out the Q♠ while it holds the A♠ or K♠: each low spade led spent
+  a guard, and a bare high spade is exactly where the queen lands.  It
+  works its shortest side suit instead (docs/ordinary-play.md, P1).  Over
+  6,000 fresh-seed (seed 1) blocks against the greedy field, the heuristic
+  bot gains `+0.0110 ± 0.0024` matchpoint rank (4.5 SE) and
+  `+0.0027 ± 0.0008` win equity (3.3 SE); the web Easy tier's
+  configuration gains `+0.0154 ± 0.0025` rank (6.1 SE).  For the Monte
+  Carlo bot, where the rule lands in its rollouts and its incumbent, the
+  change is neutral on rank and win at every measured width (`mc:128`
+  `−0.0013 ± 0.0046`, `mc:32` `−0.0003 ± 0.0049`, `mc:256`
+  `−0.0016 ± 0.0044`), while its completed moons rise by about
+  0.2 percentage points.
 - Web cards, faces and backs alike, are bridge-sized (2.25:3.5) instead of
   poker-sized, with the fan overlap and face padding retuned to match.
 - The pass policy is now **set-aware**: `greedy_pass` picks its three cards
@@ -335,6 +348,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **Ordinary-play campaign: P1 shipped, S3 cut.**  P1 is above.  S3's
+  probe split the `mc:256`-over-`mc:128` gain by decision.  Pooled over
+  14,000 blocks on three seeds the whole lever is worth only about
+  `+0.006 ± 0.003` rank (`+0.004 ± 0.001` win), for 65% more wall time.
+  Widening tricks 7–13 to 256 worlds is a tight zero on two seeds
+  (`−0.0004 ± 0.0011`), and cutting them to 32 saves 13% of wall time
+  but costs `−0.0026 ± 0.0010` rank.  So late decisions are saturated
+  but not oversupplied.  The rest of the gain is split between the pass
+  and tricks 1–6 with no clear owner, which leaves nothing to reallocate.
+  The doc records the legs.
 - **`docs/ordinary-play.md` opens the ordinary-play campaign.**  The
   queue the Deep CFR moon campaign closed into, in three tiers: throughput
   (T2 coarser `parallel` tasks, for sequential consumers only),

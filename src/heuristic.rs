@@ -152,8 +152,13 @@ fn best_dump(legal: Hand, played: Hand) -> Card {
 pub(crate) fn greedy_play(legal: Hand, trick: Trick, played: Hand) -> Card {
     let Some(led) = trick.suit() else {
         // Leading.  While the Q♠ is at large and not ours, smoke it out
-        // with low spades; otherwise lead our lowest card.
-        if !played.contains(Card::QUEEN_OF_SPADES) && !legal.contains(Card::QUEEN_OF_SPADES) {
+        // with low spades — unless we hold the A♠ or K♠: each low spade
+        // led spends a guard, and a bare high spade is exactly where the
+        // queen lands.  Otherwise lead our lowest card.
+        if !played.contains(Card::QUEEN_OF_SPADES)
+            && !legal.contains(Card::QUEEN_OF_SPADES)
+            && (legal[Suit::Spades] - below(Rank::Q)).is_empty()
+        {
             let low_spades = legal[Suit::Spades] & below(Rank::Q);
             if let Some(rank) = low_spades.iter().next() {
                 return Card {
@@ -776,5 +781,8 @@ mod tests {
         assert_eq!(greedy_play(hand("9.9..29Q"), trick, played), card("9♣"));
         // Holding the queen and higher clubs: lead the lowest card, no hunt.
         assert_eq!(greedy_play(hand("4.9..9Q"), trick, played), card("4♣"));
+        // Holding a high spade: keep its guards, work a shortest side suit.
+        assert_eq!(greedy_play(hand("9.9.9.29K"), trick, played), card("9♣"));
+        assert_eq!(greedy_play(hand("9.9.9.2A"), trick, played), card("9♣"));
     }
 }
