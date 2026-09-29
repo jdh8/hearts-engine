@@ -2,7 +2,8 @@
 
 **Status: IN PROGRESS (2026-08-08).**  P0 and P1 have shipped; P2 and P4
 are closed as nulls.  P3 closed 2026-09-29: (ii) shipped, (i) refuted.
-That ship is P5's trigger, so P5 is next.  P6 stays parked.  See each
+P5 closed the same day as a null.  Its sweep found a global retune,
+`spade_guards` 5→4, which shipped.  Only the parked P6 remains.  See each
 section's own status line.  Sibling:
 [passing-shape.md](passing-shape.md) covers the void/shape axis; its P1
 rewrites the shared pass policy and lands before anything here that
@@ -137,7 +138,7 @@ information whitelist forbids the evidence by construction.
 | P2 | noisy opponent generator | worlds | cheap experiment | **null, reverted** |
 | P3 | prior-informed `pass_score` | all four | high ceiling | blocked on the sibling doc |
 | P4 | settle the 0.75 constant | observation | measurement | **stage one done; kept, closed** |
-| P5 | direction-conditioned config | self | speculative | needs P3 signal |
+| P5 | direction-conditioned config | self | speculative | **null; spun off `spade_guards = 4`, shipped** |
 | P6 | shooter-aware opponents | worlds | parked | parked |
 
 ### P0 — name the model roles
@@ -571,6 +572,52 @@ headroom at all.
 **Kill criterion.**  A stage-one sweep with no arm ≥ 2 SE records the
 null and closes the direction question for good.
 
+**Status: NULL — THE DIRECTION QUESTION IS CLOSED (2026-09-29).  The
+sweep's one survivor was direction-free and shipped as `spade_guards = 4`.**
+
+No library code was needed to run it.  `tune --direction left|right|across`
+applies an arm's pass knobs only in that direction's rounds and passes
+with the default in the others.  Each pass knob moved one step either
+side of its default, per direction, at 200,000 games per arm on seed 1
+(game-win Δ in pp, SE 0.01–0.02 unless shown):
+
+| knob | left | right | across |
+| --- | --- | --- | --- |
+| `void` 0 / 2 | −1.37 / −1.28 | −1.23 / −0.96 | −1.13 / −1.00 (± 0.07) |
+| `heart` 1 | −3.37 | −2.90 | −2.65 (± 0.08) |
+| `guards` 4 / 6 | **+0.07** / −0.02 | **+0.06** / −0.03 | **+0.07** / −0.05 |
+| `two` 4 / 8 | −0.02 / −0.01 | −0.05 / +0.03 | −0.03 / +0.01 |
+| `insure` 0 | −0.01 | −0.04 | −0.02 |
+
+No direction wants a knob its neighbors don't.  The losing arms lose
+everywhere, a little less across, which is dilution: across the giver is
+also the receiver, so a bad pass is partly handed back.  The one arm that
+clears 2 SE, `guards = 4`, clears it by the same amount in all three
+directions, and repeats at +0.07/+0.07/+0.08 on a fresh seed 2.  An effect
+that is equal in every direction is not a direction effect.  It is a
+global default that `tune` never resolved.
+
+Run globally, `guards = 4` gains +0.19 ± 0.04 pp (seed 1) and
++0.23 ± 0.04 (seed 2), and `guards = 3` is noise.  The sibling doc's
+re-sweep called 3, 4 and 6 "inside noise of 5", and that was a resolution
+limit: a +0.2 pp edge needs about 200,000 games to show.  It does not
+come from queen insurance.  Without insurance, 4 still beats 5 by +0.21.
+Arena legs for the default change, in P3's format:
+
+| leg | `rank` | `win` | `not-last` | `moons` |
+| --- | --- | --- | --- | --- |
+| greedy games, seed 7, 100,000 blocks | +0.0061 ± 0.0005 | +0.0026 ± 0.0003 | +0.0012 ± 0.0003 | +0.0002 ± 0.0000 |
+| greedy deals, seed 9, 400,000 blocks | +0.0021 ± 0.0001 | +0.0011 ± 0.0001 | −0.0000 ± 0.0001 | +0.0001 ± 0.0000 |
+| `mc:128`, seed 5, 20,000 blocks | +0.0012 ± 0.0020 | −0.0007 ± 0.0008 | +0.0010 ± 0.0007 | +0.0008 ± 0.0004 |
+| `mc:128`, seed 6, 20,000 blocks | +0.0004 ± 0.0020 | +0.0004 ± 0.0009 | −0.0000 ± 0.0007 | +0.0002 ± 0.0004 |
+
+The greedy legs give `rank` +11 and +15 SE.  `mc:128` is neutral, with
+pooled `rank +0.0008 ± 0.0014` and `win −0.0002 ± 0.0006`.  As with P3(ii),
+the change ships on the greedy gain while the search stays neutral.  The
+pool bridge was not built.  The changed triple keeps a high spade that
+has four guards and passes the next card instead.  The top-6 pool almost
+always contains that triple already.
+
 ### P6 — parked: shooter-aware opponent passes
 
 Rollout opponents never shoot, so a candidate that ships A♥ K♥ to a
@@ -594,7 +641,11 @@ any `greedy_pass` default change → P4 stage one whenever CPU is idle,
 stage two after P0 → P5 only on P3 signal → P6 only against a field
 that shoots.
 
-**What is left, as of 2026-08-08.**  P0, P1, P2 and P4 are all closed —
+**What is left, as of 2026-09-29.**  Only P6, parked behind an opponent
+pool that shoots.  P3 and P5 are closed, and the sections above give the
+details.
+
+**What was left, as of 2026-08-08.**  P0, P1, P2 and P4 are all closed —
 one shipped, one measured, two nulls.  **P3 is now unblocked**: the
 sibling's P1 has shipped, so the incumbent every P3 arena leg is measured
 against is finally the honest one.  P5 waits on a P3 signal, P6 on an

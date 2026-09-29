@@ -14,13 +14,17 @@
 //! same games and must print `+0.00 ± 0.00` exactly — the harness's own
 //! self-check.
 //!
+//! `--direction left|right|across` applies an arm's pass knobs only in that
+//! direction's rounds, passing with the default elsewhere; play-side knobs
+//! still apply everywhere.
+//!
 //! Comparing many arms on one seed and keeping the maximum overstates the
 //! winner.  Search on one seed, then re-confirm the single best arm on
 //! another before trusting it.
 
 use anyhow::{Context as _, Result, bail};
-use hearts_engine::hearts::{Game, Rules, Seat};
-use hearts_engine::{HeuristicBot, HeuristicConfig, Strategy, play_game};
+use hearts_engine::hearts::{Card, Game, PassDirection, Rules, Seat};
+use hearts_engine::{HeuristicBot, HeuristicConfig, Strategy, View, play_game};
 use rand::SeedableRng as _;
 use rand::rngs::StdRng;
 use std::time::Instant;
@@ -33,6 +37,29 @@ struct Config {
     heart_weight: Vec<u8>,
     two_of_clubs_bonus: Vec<u8>,
     spade_guards: Vec<u8>,
+    queen_insurance: Vec<u8>,
+    direction: Option<PassDirection>,
+}
+
+/// The candidate: its arm's passes in `direction` (all if `None`), the
+/// default's elsewhere, and its arm's play throughout.
+struct Directed {
+    arm: HeuristicBot,
+    direction: Option<PassDirection>,
+}
+
+impl Strategy for Directed {
+    fn pass_cards(&mut self, view: &View<'_>) -> [Card; 3] {
+        if self.direction.is_none_or(|d| d == view.direction()) {
+            self.arm.pass_cards(view)
+        } else {
+            HeuristicBot::new().pass_cards(view)
+        }
+    }
+
+    fn play_card(&mut self, view: &View<'_>) -> Card {
+        self.arm.play_card(view)
+    }
 }
 
 /// The Cartesian product of the knob lists, one candidate config per arm.
@@ -43,14 +70,17 @@ fn arms(config: &Config) -> Vec<HeuristicConfig> {
             for &heart_weight in &config.heart_weight {
                 for &two_of_clubs_bonus in &config.two_of_clubs_bonus {
                     for &spade_guards in &config.spade_guards {
-                        // `HeuristicConfig` is non-exhaustive: start from Default.
-                        let mut arm = HeuristicConfig::default();
-                        arm.moon_defense = moon_defense;
-                        arm.void_weight = void_weight;
-                        arm.heart_weight = heart_weight;
-                        arm.two_of_clubs_bonus = two_of_clubs_bonus;
-                        arm.spade_guards = spade_guards;
-                        arms.push(arm);
+                        for &queen_insurance in &config.queen_insurance {
+                            // `HeuristicConfig` is non-exhaustive: start from Default.
+                            let mut arm = HeuristicConfig::default();
+                            arm.moon_defense = moon_defense;
+                            arm.void_weight = void_weight;
+                            arm.heart_weight = heart_weight;
+                            arm.two_of_clubs_bonus = two_of_clubs_bonus;
+                            arm.spade_guards = spade_guards;
+                            arm.queen_insurance = queen_insurance;
+                            arms.push(arm);
+                        }
                     }
                 }
             }
@@ -76,7 +106,8 @@ fn usage() {
         "Usage: tune [--games N] [--seed N] [--moon-defense N,N,...] \\\n\
          [--void-weight N,N,...] [--heart-weight N,N,...] \\\n\
          [--two-of-clubs-bonus N,N,...] \\\n\
-         [--spade-guards N,N,...]"
+         [--spade-guards N,N,...] [--queen-insurance N,N,...] \\\n\
+         [--direction left|right|across]"
     );
 }
 
@@ -90,6 +121,8 @@ fn parse_args() -> Result<Option<Config>> {
         heart_weight: vec![default.heart_weight],
         two_of_clubs_bonus: vec![default.two_of_clubs_bonus],
         spade_guards: vec![default.spade_guards],
+        queen_insurance: vec![default.queen_insurance],
+        direction: None,
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -102,11 +135,21 @@ fn parse_args() -> Result<Option<Config>> {
             "--heart-weight" => config.heart_weight = parse_list(&value()?)?,
             "--two-of-clubs-bonus" => config.two_of_clubs_bonus = parse_list(&value()?)?,
             "--spade-guards" => config.spade_guards = parse_list(&value()?)?,
+            "--queen-insurance" => config.queen_insurance = parse_list(&value()?)?,
+            "--direction" => {
+                config.direction = Some(match value()?.as_str() {
+                    "left" => PassDirection::Left,
+                    "right" => PassDirection::Right,
+                    "across" => PassDirection::Across,
+                    other => bail!("unknown direction {other:?} (left/right/across)"),
+                });
+            }
             "--help" | "-h" => return Ok(None),
             other => bail!(
                 "unknown flag {other:?} (--games/--seed/--moon-defense\
                  /--void-weight/--heart-weight\
-                 /--two-of-clubs-bonus/--spade-guards)"
+                 /--two-of-clubs-bonus/--spade-guards\
+                 /--queen-insurance/--direction)"
             ),
         }
     }
@@ -118,15 +161,25 @@ fn parse_args() -> Result<Option<Config>> {
 /// The deal is seeded from `index` alone, not from the arm's knobs, so every
 /// arm plays game `index` on the same random stream.  This is the common
 /// random number pairing that keeps arm-to-baseline deltas quiet.
-fn play_one(arm: HeuristicConfig, rules: Rules, seed: u64, index: u32) -> Result<bool> {
+fn play_one(
+    arm: HeuristicConfig,
+    direction: Option<PassDirection>,
+    rules: Rules,
+    seed: u64,
+    index: u32,
+) -> Result<bool> {
     // SplitMix64's stride decorrelates adjacent per-game seeds.
     let mixed = u64::from(index).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     let mut rng = StdRng::seed_from_u64(seed ^ mixed);
     let candidate_seat = Seat::ALL[index as usize % 4];
     let mut bots = [HeuristicBot::new(); 4];
-    bots[candidate_seat as usize] = HeuristicBot::with_config(arm);
+    let mut candidate = Directed {
+        arm: HeuristicBot::with_config(arm),
+        direction,
+    };
     let [north, east, south, west] = &mut bots;
-    let seats: [&mut dyn Strategy; 4] = [north, east, south, west];
+    let mut seats: [&mut dyn Strategy; 4] = [north, east, south, west];
+    seats[candidate_seat as usize] = &mut candidate;
     let mut game = Game::new(rules);
     let score = play_game(&mut game, seats, &mut rng)?;
     Ok(score.winners().any(|seat| seat == candidate_seat))
@@ -136,7 +189,7 @@ fn play_one(arm: HeuristicConfig, rules: Rules, seed: u64, index: u32) -> Result
 fn evaluate(arm: HeuristicConfig, config: &Config) -> Result<Vec<bool>> {
     let rules = Rules::new();
     (0..config.games)
-        .map(|index| play_one(arm, rules, config.seed, index))
+        .map(|index| play_one(arm, config.direction, rules, config.seed, index))
         .collect()
 }
 
@@ -156,12 +209,13 @@ fn paired_delta(outcomes: &[bool], baseline: &[bool]) -> (f64, f64) {
 
 fn describe(arm: HeuristicConfig) -> String {
     format!(
-        "moon={:>3} void={} heart={} two={:>2} guards={}",
+        "moon={:>3} void={} heart={} two={:>2} guards={} queen={}",
         arm.moon_defense,
         arm.void_weight,
         arm.heart_weight,
         arm.two_of_clubs_bonus,
         arm.spade_guards,
+        arm.queen_insurance,
     )
 }
 
@@ -207,13 +261,14 @@ fn main() -> Result<()> {
     {
         println!(
             "best: --moon-defense {} --void-weight {} --heart-weight {} \
-             --two-of-clubs-bonus {} --spade-guards {} \
+             --two-of-clubs-bonus {} --spade-guards {} --queen-insurance {} \
              ({delta:+.2} ± {error:.2} pp)",
             arm.moon_defense,
             arm.void_weight,
             arm.heart_weight,
             arm.two_of_clubs_bonus,
             arm.spade_guards,
+            arm.queen_insurance,
         );
     }
     Ok(())

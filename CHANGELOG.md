@@ -112,6 +112,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`HeuristicConfig::spade_guards` defaults to 4, down from 5.**  Four
+  spades below the queen now disarm the pass policy's Q♠/A♠/K♠ bonuses,
+  so a hand with exactly four keeps its high spade and passes the next
+  card instead.  In `tune`, at 200,000 games per arm, game wins rise
+  +0.19 ± 0.04 pp (seed 1) and +0.23 ± 0.04 (seed 2).  In a greedy field
+  the arena shows:
+  - whole games, seed 7, 100,000 blocks: `rank +0.0061 ± 0.0005`,
+    `win +0.0026 ± 0.0003`;
+  - single deals, seed 9, 400,000 blocks: `rank +0.0021 ± 0.0001`,
+    `win +0.0011 ± 0.0001`.
+
+  Through `pass_model` the default also reaches the Monte Carlo search,
+  where `mc:128` is neutral (pooled over two 20,000-block seeds:
+  `rank +0.0008 ± 0.0014`, `win −0.0002 ± 0.0006`).  Passes change
+  meaning for `greedy:V,H,G` and `mc:…,guards=` arena specs that relied
+  on the old default; spell out `guards=5` to reproduce them.
 - **The pass policy keeps its low spades when it lacks the Q♠.**  The new
   `HeuristicConfig::queen_insurance`, **defaulting to 4**, is a pass-score
   malus on a spade below the queen while the hand lacks her.  After the
@@ -370,6 +386,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collapse only across ranks gone in *completed* tricks.
 
 ### Internal
+
+- **Direction-conditioned passing is a null.**  `passing-opponent-model.md`'s
+  P5 swept every pass knob one step each way, separately for left, right
+  and across passes, at 200,000 games per arm.  No direction wants a knob
+  setting that the other directions don't.  The one arm past 2 SE,
+  `spade_guards = 4`, gained equally in every direction and shipped as a
+  global default (see Changed).  `tune` gains `--direction left|right|across`,
+  which applies an arm's pass knobs only in that direction's rounds, and
+  `--queen-insurance`, the one pass knob it could not yet sweep.
 
 - **A fractional void weight was refuted and ships no behavior change.**
   For `passing-opponent-model.md`'s P3(i), `pass_score` was temporarily

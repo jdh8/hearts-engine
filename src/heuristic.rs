@@ -257,7 +257,7 @@ pub struct HeuristicConfig {
     /// are duckable on demand, unlike a caught Q♠.
     pub heart_weight: u8,
     /// High-spade pass bonuses apply while holding fewer than this many
-    /// spades below the queen; the default is 5
+    /// spades below the queen; the default is 4
     pub spade_guards: u8,
     /// Extra pass score for the 2♣ alone
     ///
@@ -287,7 +287,7 @@ impl HeuristicConfig {
             moon_defense: 8,
             void_weight: 1,
             heart_weight: 0,
-            spade_guards: 5,
+            spade_guards: 4,
             two_of_clubs_bonus: 6,
             queen_insurance: 4,
         }
