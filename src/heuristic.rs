@@ -22,10 +22,6 @@ fn below(rank: Rank) -> Holding {
 /// queen), hearts weigh an extra `heart_weight` times their rank, the 2♣
 /// takes a flat `two_of_clubs_bonus` for its forced lead, and cards of a
 /// short non-spade suit earn a void bonus scaled by `void_weight`.
-///
-/// Every term but the void bonus is counted in quarters, so `void_weight`
-/// steps a quarter of a rank at a time: the default 4 is the old unit
-/// weight, and 2 or 3 sit between the old grid's 0 and 1.
 pub(crate) fn pass_score(hand: Hand, card: Card, config: HeuristicConfig) -> i32 {
     let mut score = i32::from(card.rank.get());
 
@@ -50,7 +46,6 @@ pub(crate) fn pass_score(hand: Hand, card: Card, config: HeuristicConfig) -> i32
     if card == Card::TWO_OF_CLUBS {
         score += i32::from(config.two_of_clubs_bonus);
     }
-    score *= 4;
 
     // A short side suit is a void in the making; spades keep their guards.
     let len = hand[card.suit].len() as i32;
@@ -241,10 +236,9 @@ pub struct HeuristicConfig {
     /// Take a trick to kill a suspected moon once a single opponent has
     /// swept this many points; `u8::MAX` effectively disables the defense
     pub moon_defense: u8,
-    /// Weight of the void bonus when scoring passes, in quarters of a rank
+    /// Weight of the void bonus when scoring passes
     ///
-    /// Zero passes purely on card danger; the default is 4, a whole rank
-    /// per step of shortness.
+    /// Zero passes purely on card danger; the default is 1.
     pub void_weight: u8,
     /// Extra pass-score weight per rank for hearts, atop the base rank
     ///
@@ -273,7 +267,7 @@ impl HeuristicConfig {
     pub const fn new() -> Self {
         Self {
             moon_defense: 8,
-            void_weight: 4,
+            void_weight: 1,
             heart_weight: 0,
             spade_guards: 5,
             two_of_clubs_bonus: 6,
@@ -554,7 +548,7 @@ mod tests {
         assert!(danger(card("A♦")) > danger(card("A♣")));
         assert!(danger(card("A♣")) > danger(card("J♠")));
 
-        // And the ladder reaching the policy.  Four nines score exactly 36
+        // And the ladder reaching the policy.  Four nines score exactly 9
         // apiece — a four-card suit earns no void bonus and `heart_weight`
         // is zero — so nothing but the tie-break decides.  Stable-sort order
         // used to send the clubs first; the 9♠ is a guard and never goes.
@@ -570,7 +564,7 @@ mod tests {
         );
 
         // With five guards the Q♠/A♠/K♠ tier is disarmed, so a bare K♠ and a
-        // K♣ both score 52 and the danger class is the whole difference: the
+        // K♣ both score 13 and the danger class is the whole difference: the
         // spade honor goes, the club stays.
         assert_eq!(
             greedy_pass(hand("234K..23K.23456K"), HeuristicConfig::default()),

@@ -1,7 +1,7 @@
 # Opponent-aware passing — pricing what the other three seats pass
 
 **Status: IN PROGRESS (2026-08-08).**  P0 and P1 have shipped; P2 and P4
-are closed as nulls.  P3 is unblocked and next here,
+are closed as nulls.  P3 is next here — its (i) was refuted 2026-09-29 —
 P5 behind P3, P6 parked — see each section's own status line.  Sibling:
 [passing-shape.md](passing-shape.md) covers the void/shape axis; its P1
 rewrites the shared pass policy and lands before anything here that
@@ -400,14 +400,28 @@ Reverted in full; `greedy_pass` is back to its one-sort form.
 
 ### P3 — prior-informed `pass_score`
 
-**Status: P3(i) RESCALE LANDED (2026-09-29); SWEEP NEXT.**  The
-quarter scale shipped as designed.  The other terms are multiplied by
-four and the `void_weight` default is 4.  Five arena CSVs are
-byte-identical to the pre-scale build once explicit void specs are
-multiplied by four: greedy blocks, mixed greedy/newbie blocks, whole
-games, and `mc` at two sample counts.  A quarter step
-(`greedy:7,0,5`) does move decisions.  The {2, 3, 4, 5} `tune` sweep
-is next, and so are P3(ii) and the pool bridge.
+**Status: P3(i) REFUTED AND REVERTED (2026-09-29); P3(ii) and the pool
+bridge remain.**  The ×4 rescale was built as designed.  It was
+decision-neutral: five arena CSVs were byte-identical at `void_weight = 4`.
+The refill prior's case for a weight between 0 and 1 does not survive
+`tune`.  Game-win deltas at 200,000 games per arm on seed 1, in old
+units:
+
+| weight | 0.5 | 0.75 | 1 (shipped) | 1.25 | 1.5 | 1.75 | 2 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Δ pp | −1.49 ± 0.08 | −0.47 ± 0.07 | 0 | +0.12 ± 0.07 | −0.73 ± 0.08 | −1.55 ± 0.09 | −2.88 ± 0.09 |
+
+The shipped unit weight is a sharp optimum.  The only arm near it,
+1.25, confirmed at +0.10 ± 0.07 pp on seed 2 and then failed both
+arena legs that matter.  Greedy whole games (seed 4, 100,000 blocks):
+`rank −0.0004 ± 0.0009`, `win +0.0000 ± 0.0004`.  The `mc:128` pass model
+(seeds 5 and 6, 20,000 blocks each): `rank +0.0025 ± 0.0023` and
+`−0.0011 ± 0.0023`.  Per-deal greedy blocks did favor it
+(`rank +0.0027 ± 0.0003`, seed 3, 400,000 blocks).  A heavier void
+bonus wins more single rounds, and that gain washes out over a game.
+Per the kill criterion the sub-part is reverted, scale included.  The
+integer grid was not hiding an optimum, so the rescale has no further
+use.
 
 The ceiling is the retune precedent (`+0.188 ± 0.006` rank); the floor
 is the `void_weight = 2` refutation (`−0.20 ± 0.42` pp at 8,000

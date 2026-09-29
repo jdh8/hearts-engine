@@ -112,16 +112,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `HeuristicConfig::void_weight` now counts in quarters of a rank: the pass
-  score's other terms are scaled by four, so the default is 4 instead of 1
-  and weights 2 and 3 fall between the old grid's 0 and 1.  The scale
-  change alone moves no decision.  At the new default, arena CSVs match the
-  old ones byte for byte across greedy, `mc` and whole-game runs.  Specs
-  that set the weight explicitly must be multiplied by four to keep their
-  meaning (`greedy:2,0,5` is now `greedy:8,0,5`, and `mc:…,void=2` is now
-  `void=8`); `void=0` is unchanged.  `tune` now sweeps {2, 3, 4, 5} by
-  default.
-
 - The shared greedy play/rollout policy no longer leads low spades to
   smoke out the Q♠ while it holds the A♠ or K♠: each low spade led spent
   a guard, and a bare high spade is exactly where the queen lands.  It
@@ -357,6 +347,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collapse only across ranks gone in *completed* tricks.
 
 ### Internal
+
+- **A fractional void weight was refuted and ships no behavior change.**
+  For `passing-opponent-model.md`'s P3(i), `pass_score` was temporarily
+  scaled by four, so `void_weight` stepped in quarters.  The scale alone
+  moved no decision: five arena CSVs were byte-identical.  `tune`, at
+  200,000 games per arm on seed 1, rejects everything lighter than the
+  shipped weight: 0.5 costs −1.49 ± 0.08 pp of game wins and 0.75 costs
+  −0.47 ± 0.07.  Heavier weights fare no better: 1.5, 1.75 and 2 cost
+  −0.73, −1.55 and −2.88 pp.  The one survivor, 1.25, was
+  +0.12 ± 0.07 pp on seed 1 and +0.10 ± 0.07 on seed 2.  It wins single
+  deals (`rank` +9.2 SE over 400,000 blocks) but not whole games (`rank`
+  −0.4 SE over 100,000 game blocks), and it is null for `mc:128`'s pass
+  model (`rank` +0.0007 ± 0.0016 pooled over two 20,000-block seeds).
+  The scale is reverted with the sub-part, as its kill criterion
+  directs.
 
 - **Ordinary-play campaign: P2 cut at stage 2; campaign closed.**  The
   stage-1 100 × 31 ranker was exported to Rust (it matches LightGBM's

@@ -14,8 +14,7 @@
 //! Predictions, recorded before the run so the run can kill them:
 //!
 //! 1. **P(receive Q♠ | we lack her) ≈ 0.30.** She sits with the giver at
-//!    exactly 1/3 when we lack her; an unguarded Q♠ scores `100 + 12 = 112`
-//!    (in the whole-rank units `pass_score` used before its quarter scale),
+//!    exactly 1/3 when we lack her; an unguarded Q♠ scores `100 + 12 = 112`,
 //!    the global maximum of `pass_score` (A♠ = 104, K♠ = 93, the best heart =
 //!    20), so the model passes her whenever fewer than `spade_guards = 5`
 //!    below-queen spades sit in the giver's other twelve cards. This is a
