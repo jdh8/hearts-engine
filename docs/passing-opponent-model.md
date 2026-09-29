@@ -1,8 +1,9 @@
 # Opponent-aware passing — pricing what the other three seats pass
 
 **Status: IN PROGRESS (2026-08-08).**  P0 and P1 have shipped; P2 and P4
-are closed as nulls.  P3 is next here — its (i) was refuted 2026-09-29 —
-P5 behind P3, P6 parked — see each section's own status line.  Sibling:
+are closed as nulls.  P3 closed 2026-09-29: (ii) shipped, (i) refuted.
+That ship is P5's trigger, so P5 is next.  P6 stays parked.  See each
+section's own status line.  Sibling:
 [passing-shape.md](passing-shape.md) covers the void/shape axis; its P1
 rewrites the shared pass policy and lands before anything here that
 touches `pass_score`.
@@ -400,8 +401,33 @@ Reverted in full; `greedy_pass` is back to its one-sort form.
 
 ### P3 — prior-informed `pass_score`
 
-**Status: P3(i) REFUTED AND REVERTED (2026-09-29); P3(ii) and the pool
-bridge remain.**  The ×4 rescale was built as designed.  It was
+**Status: P3(ii) SHIPPED, P3(i) REFUTED AND REVERTED (2026-09-29); the
+pool bridge was not built.**
+
+**P3(ii), queen insurance, shipped** as `queen_insurance = 4`, the value
+where the rule saturates.  It changes outcomes in 3.3% of greedy deal
+blocks at 4, and in no more at 8, 16 or 64.
+
+| leg | `rank` | `win` | `not-last` | `moons` |
+| --- | --- | --- | --- | --- |
+| greedy games, seed 3 (search; 1, 2, 4 all positive) | +0.0015 ± 0.0002 | +0.0003 ± 0.0001 | +0.0005 ± 0.0001 | 0 |
+| greedy games, seed 4 (confirm) | +0.0014 ± 0.0002 | +0.0002 ± 0.0001 | +0.0006 ± 0.0001 | 0 |
+| greedy deals, seed 8 | +0.0002 ± 0.0001 | −0.0003 ± 0.0000 | +0.0006 ± 0.0000 | 0 |
+| `mc:128`, seeds 5+6, insured ballast | −0.0013 ± 0.0008 | −0.0013 ± 0.0004 | +0.0005 ± 0.0003 | −0.0020 ± 0.0002 |
+| `mc:128`, seeds 5+6, uninsured ballast | +0.0009 ± 0.0008 | +0.0002 ± 0.0004 | +0.0006 ± 0.0003 | −0.0001 ± 0.0002 |
+
+The first `mc` leg failed the `win` gate, and the whole loss sat in the
+shoot candidate.  Its ballast is the bottom three of `pass_key`, and
+insurance put the low spades there.  The shipped build ranks the ballast
+uninsured, because a shooter wants the queen, and the loss disappears.
+Like ordinary-play P1, this ships on a clear greedy gain with the search
+neutral.  The pool bridge was not built.  The pool is every triple of
+the top six `pass_key` cards, and the insured triple differs from the
+incumbent by one low spade swapped for the next card, which that pool
+almost always holds already.  The `mc` leg above measured the default
+change directly.
+
+**P3(i) is refuted and reverted.**  The ×4 rescale was built as designed.  It was
 decision-neutral: five arena CSVs were byte-identical at `void_weight = 4`.
 The refill prior's case for a weight between 0 and 1 does not survive
 `tune`.  Game-win deltas at 200,000 games per arm on seed 1, in old

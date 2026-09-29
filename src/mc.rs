@@ -542,7 +542,14 @@ fn pass_candidates(view: &View<'_>, config: HeuristicConfig) -> Vec<Candidate> {
     // The mirror of the greedy triple: the three cards the pass policy least
     // wants gone are low cards of long suits, which is exactly the ballast a
     // shot sheds.  One candidate, rolled with a shooting continuation.
-    let losers: [Card; 3] = ranked[ranked.len() - 3..]
+    // Ranked without queen insurance: it keeps low spades to duck an incoming
+    // Q♠, which a shooter wants, and ranking them dead last would make them
+    // the ballast (measured: −8 SE of the seat's own moons).
+    let mut ducker = config;
+    ducker.queen_insurance = 0;
+    let mut ballast: Vec<Card> = hand.into_iter().collect();
+    ballast.sort_unstable_by_key(|&card| core::cmp::Reverse(pass_key(hand, card, ducker)));
+    let losers: [Card; 3] = ballast[ballast.len() - 3..]
         .try_into()
         .expect("a passing hand holds thirteen cards");
 

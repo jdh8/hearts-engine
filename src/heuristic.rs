@@ -21,7 +21,8 @@ fn below(rank: Rank) -> Holding {
 /// an unprotected Q♠ tops the list, bare A♠/K♠ follow (they catch the
 /// queen), hearts weigh an extra `heart_weight` times their rank, the 2♣
 /// takes a flat `two_of_clubs_bonus` for its forced lead, and cards of a
-/// short non-spade suit earn a void bonus scaled by `void_weight`.
+/// short non-spade suit earn a void bonus scaled by `void_weight`.  Lacking
+/// the queen, spades below her lose `queen_insurance`.
 pub(crate) fn pass_score(hand: Hand, card: Card, config: HeuristicConfig) -> i32 {
     let mut score = i32::from(card.rank.get());
 
@@ -45,6 +46,16 @@ pub(crate) fn pass_score(hand: Hand, card: Card, config: HeuristicConfig) -> i32
     // scores bare rank 2 and is otherwise all but unpassable.
     if card == Card::TWO_OF_CLUBS {
         score += i32::from(config.two_of_clubs_bonus);
+    }
+
+    // Lacking the queen, a low spade guards against her arriving in the pass.
+    // `greedy_pass` rescores what is left, so passing her insures the spades
+    // she leaves behind; the measured policy works that way.
+    if card.suit == Suit::Spades
+        && card.rank.get() < Rank::Q.get()
+        && !hand.contains(Card::QUEEN_OF_SPADES)
+    {
+        score -= i32::from(config.queen_insurance);
     }
 
     // A short side suit is a void in the making; spades keep their guards.
@@ -255,6 +266,13 @@ pub struct HeuristicConfig {
     /// yet it scores bare rank 2 and is otherwise all but unpassable.  Zero,
     /// the default, leaves it at bare rank.
     pub two_of_clubs_bonus: u8,
+    /// Pass-score malus for a spade below the queen while the hand lacks
+    /// her; zero disables it
+    ///
+    /// After the exchange such a spade guards against the queen arriving.
+    /// The default, 4, already saturates: larger values change no more
+    /// passes.
+    pub queen_insurance: u8,
 }
 
 impl HeuristicConfig {
@@ -271,6 +289,7 @@ impl HeuristicConfig {
             heart_weight: 0,
             spade_guards: 5,
             two_of_clubs_bonus: 6,
+            queen_insurance: 4,
         }
     }
 }
@@ -525,17 +544,38 @@ mod tests {
         // collected, no void created.  Sequentially the A♥ leaves the 6♥ a
         // singleton worth 6 + 6 = 12, which beats the J♠: the pass opens a
         // real heart void and keeps the 2♦ as a clean duck.
+        // Queen insurance would demote the J♠ and blur the contrast.
         let dealt = hand("234679.2K.6A.68J");
+        let config = HeuristicConfig {
+            queen_insurance: 0,
+            ..HeuristicConfig::default()
+        };
         assert_eq!(
-            greedy_pass(dealt, HeuristicConfig::default()),
+            greedy_pass(dealt, config),
             [card("A♥"), card("K♦"), card("6♥")],
         );
 
         assert_eq!(
-            flat_pass(dealt, HeuristicConfig::default()),
+            flat_pass(dealt, config),
             [card("A♥"), card("K♦"), card("J♠")],
             "the flat form scatters, which is what this replaced",
         );
+    }
+
+    #[test]
+    fn queen_insurance_keeps_a_low_spade_without_her() {
+        let dealt = hand("2345.2345.234.29");
+        let uninsured = HeuristicConfig {
+            queen_insurance: 0,
+            ..HeuristicConfig::default()
+        };
+        assert!(greedy_pass(dealt, uninsured).contains(&card("9♠")));
+        assert!(!greedy_pass(dealt, HeuristicConfig::default()).contains(&card("9♠")));
+
+        // Holding her, a low spade scores bare rank.
+        let config = HeuristicConfig::default();
+        assert_eq!(pass_score(hand("2345.2345.23.29Q"), card("9♠"), config), 9);
+        assert_eq!(pass_score(dealt, card("9♠"), config), 5);
     }
 
     #[test]

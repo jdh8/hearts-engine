@@ -112,6 +112,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The pass policy keeps its low spades when it lacks the Q♠.**  The new
+  `HeuristicConfig::queen_insurance`, **defaulting to 4**, is a pass-score
+  malus on a spade below the queen while the hand lacks her.  After the
+  exchange such a spade guards against her arriving.  The rule changes
+  outcomes in about 3% of greedy deal blocks, and larger values change
+  nothing more.  In a greedy field, against the uninsured policy, whole
+  games improved on both seeds:
+  - seed 3, 200,000 blocks: `rank +0.0015 ± 0.0002`, `win +0.0003 ± 0.0001`;
+  - seed 4, 200,000 blocks: `rank +0.0014 ± 0.0002`, `win +0.0002 ± 0.0001`,
+    `not-last +6.5 SE`.
+
+  Per deal, it trades round wins (−9.3 SE) for last places avoided
+  (+19 SE).  Through `pass_model` the knob also reaches the Monte Carlo
+  search, except in the shoot candidate's ballast.  That triple is still
+  ranked uninsured, because a shooter wants the queen.  Letting insurance
+  pick the ballast cost `mc:128` 8 SE of its own moons and 3.5 SE of
+  `win`.  With the exemption, `mc:128` is neutral to positive (seeds 5
+  and 6, 20,000 blocks each: `rank +0.0009 ± 0.0008` pooled, `moons`
+  flat).  `greedy_pass` rescores what is left of the hand, so passing the
+  queen insures the spades she leaves behind.  The measured policy
+  worked that way.  Arena specs take the knob as `insure=N`; `insure=0`
+  restores the old policy.
+
 - The shared greedy play/rollout policy no longer leads low spades to
   smoke out the Q♠ while it holds the A♠ or K♠: each low spade led spent
   a guard, and a bare high spade is exactly where the queen lands.  It

@@ -64,8 +64,9 @@ fn usage() {
         "Usage: arena [--blocks N | --games N] [--seed N] [--ab SPEC] [--csv] [BOT BOT BOT BOT]\n\
          BOT is greedy[:V,H,G[,knob=value...]], newbie or mc[:samples[,knob=value...]].\n\
          greedy:V,H,G sets void_weight,heart_weight,spade_guards positionally;\n\
-         both specs then take named pass knobs void/heart/guards/two,\n\
-         two being the flat bonus for passing the forced 2♣ lead.\n\
+         both specs then take named pass knobs void/heart/guards/two/insure,\n\
+         two being the flat bonus for passing the forced 2♣ lead and insure\n\
+         the malus on spades below a queen the hand lacks.\n\
          mc's knobs set the pass model the search ranks, samples its rollout\n\
          opponents, and reads the incoming pass with.\n\
          N counts blocks, each one deal (or game seed) played four times rotated.\n\
@@ -121,7 +122,7 @@ fn parse_args() -> Result<Option<Config>> {
 /// Build one bot, seeded so its search noise is a function of the deal and
 /// its slot alone — never of the deal stream or of who else is at the table.
 /// The named pass knobs both bot specs accept, for their error messages.
-const PASS_KNOBS: &str = "void/heart/guards/two";
+const PASS_KNOBS: &str = "void/heart/guards/two/insure";
 
 /// Apply one `knob=value` pass setting, or report the key as unknown so the
 /// caller can name its own spec in the error
@@ -135,6 +136,7 @@ fn pass_knob(config: &mut HeuristicConfig, key: &str, value: &str) -> Result<boo
         "heart" => config.heart_weight = value.parse()?,
         "guards" => config.spade_guards = value.parse()?,
         "two" => config.two_of_clubs_bonus = value.parse()?,
+        "insure" => config.queen_insurance = value.parse()?,
         _ => return Ok(false),
     }
     Ok(true)
