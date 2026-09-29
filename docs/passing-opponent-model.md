@@ -400,6 +400,15 @@ Reverted in full; `greedy_pass` is back to its one-sort form.
 
 ### P3 — prior-informed `pass_score`
 
+**Status: P3(i) RESCALE LANDED (2026-09-29); SWEEP NEXT.**  The
+quarter scale shipped as designed.  The other terms are multiplied by
+four and the `void_weight` default is 4.  Five arena CSVs are
+byte-identical to the pre-scale build once explicit void specs are
+multiplied by four: greedy blocks, mixed greedy/newbie blocks, whole
+games, and `mc` at two sample counts.  A quarter step
+(`greedy:7,0,5`) does move decisions.  The {2, 3, 4, 5} `tune` sweep
+is next, and so are P3(ii) and the pool bridge.
+
 The ceiling is the retune precedent (`+0.188 ± 0.006` rank); the floor
 is the `void_weight = 2` refutation (`−0.20 ± 0.42` pp at 8,000
 games).  The **absorption principle** separates them: `tune` fits the

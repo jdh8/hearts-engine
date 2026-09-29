@@ -2,7 +2,7 @@
 //!
 //! ```console
 //! cargo run --release --example tune -- --games 2000 --seed 1 \
-//!   --moon-defense 8 --void-weight 0,1,2 --heart-weight 1,2,3 --spade-guards 2,3,4
+//!   --moon-defense 8 --void-weight 2,3,4,5 --heart-weight 1,2,3 --spade-guards 2,3,4
 //! ```
 //!
 //! Each arm is a candidate `HeuristicConfig` from the Cartesian product of
@@ -86,7 +86,7 @@ fn parse_args() -> Result<Option<Config>> {
         games: 1000,
         seed: 1,
         moon_defense: vec![4, 8, 12, u8::MAX],
-        void_weight: vec![0, 1, 2, 4],
+        void_weight: vec![2, 3, 4, 5],
         heart_weight: vec![default.heart_weight],
         two_of_clubs_bonus: vec![default.two_of_clubs_bonus],
         spade_guards: vec![default.spade_guards],

@@ -112,6 +112,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `HeuristicConfig::void_weight` now counts in quarters of a rank: the pass
+  score's other terms are scaled by four, so the default is 4 instead of 1
+  and weights 2 and 3 fall between the old grid's 0 and 1.  The scale
+  change alone moves no decision.  At the new default, arena CSVs match the
+  old ones byte for byte across greedy, `mc` and whole-game runs.  Specs
+  that set the weight explicitly must be multiplied by four to keep their
+  meaning (`greedy:2,0,5` is now `greedy:8,0,5`, and `mc:…,void=2` is now
+  `void=8`); `void=0` is unchanged.  `tune` now sweeps {2, 3, 4, 5} by
+  default.
+
 - The shared greedy play/rollout policy no longer leads low spades to
   smoke out the Q♠ while it holds the A♠ or K♠: each low spade led spent
   a guard, and a bare high spade is exactly where the queen lands.  It
