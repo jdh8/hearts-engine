@@ -7,13 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.2] — Unreleased
 
+### Fixed
+
+- `MonteCarloBot` no longer carries a completed moon plan into the next
+  round when its first play there is forced: the plan reset now runs before
+  the forced-card and moon-defense early returns.
+
 ### Internal
 
 - Document the [improvement review](docs/improvement-review.md): reproduced
   moon-plan state leaking across rounds and hints bypassing moon defense,
   identified the serial/parallel equivalence test gap, and scoped a
   score-aware midgame experiment. Includes reproduction steps and acceptance
-  criteria; the fixes remain open.
+  criteria.
 
 ## [0.1.1] — 2026-10-18
 

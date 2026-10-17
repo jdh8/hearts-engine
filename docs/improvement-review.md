@@ -7,6 +7,9 @@ play is a separate, unmeasured research opportunity.
 
 ## Reset moon plans before forced plays
 
+**Status: fixed in 0.1.2** — the reset now precedes both early returns,
+and `a_laydown_moon_is_rolled_as_one` covers the second round.
+
 In [`MonteCarloBot::play_card`](../src/mc.rs), the single-legal-card
 return precedes the code that clears `shooting` on the first trick.
 `pass_cards` does not clear it either. After a completed moon, a bot

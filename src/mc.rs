@@ -900,6 +900,21 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
     }
 
     fn play_card(&mut self, view: &View<'_>) -> Card {
+        // A moon is a plan, not a card, and the rollouts that chose it
+        // priced thirteen tricks of shooting.  Re-deciding it every trick
+        // instead measured out at three overrides in ten — the search kept
+        // wandering back to the greedy line holding points it had already
+        // paid for, which is the worst of both.  So carry the plan: the
+        // first trick of a round clears it, another seat scoring kills it,
+        // and in between the shot is simply played.  Reset before the early
+        // returns, or a forced first card carries last round's plan over.
+        if view.tricks().is_empty()
+            || Seat::ALL
+                .into_iter()
+                .any(|seat| seat != view.seat() && view.points_taken(seat) > 0)
+        {
+            self.shooting = false;
+        }
         // Reactive moon defense: the rollout policy models every opponent as
         // a greedy ducker who never shoots the moon, so the search is blind
         // to a moon in progress.  Break it with the same overlay HeuristicBot
@@ -916,20 +931,6 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
         }
         let trick = view.current_trick().expect("a play decision has a trick");
 
-        // A moon is a plan, not a card, and the rollouts that chose it
-        // priced thirteen tricks of shooting.  Re-deciding it every trick
-        // instead measured out at three overrides in ten — the search kept
-        // wandering back to the greedy line holding points it had already
-        // paid for, which is the worst of both.  So carry the plan: the
-        // first trick of a round clears it, another seat scoring kills it,
-        // and in between the shot is simply played.
-        if view.tricks().is_empty()
-            || Seat::ALL
-                .into_iter()
-                .any(|seat| seat != view.seat() && view.points_taken(seat) > 0)
-        {
-            self.shooting = false;
-        }
         if self.shooting {
             return shoot_play(legal, trick, view.played());
         }
@@ -1771,5 +1772,13 @@ mod tests {
             .expect("no seat cheats");
         assert_eq!(result.shooter(), Some(Seat::North), "the bot shot it");
         assert_eq!(bot.moon_attempts(), 1);
+
+        // The plan ends with its round, even when the next opening is forced.
+        assert!(bot.shooting);
+        let mut next = fixed_table();
+        assert_eq!(next.turn(), Some(Seat::North));
+        assert_eq!(next.view(Seat::North).legal_plays().len(), 1);
+        next.step(&mut bot).expect("the forced 2♣ is legal");
+        assert!(!bot.shooting, "a forced play clears last round's moon plan");
     }
 }
