@@ -42,6 +42,14 @@ continues within one round. A forced play should still consume no RNG.
 
 ## Make hints honor the live decision policy
 
+**Status: fixed in 0.1.2** — `play_card` and `assess` share one
+pre-search override (moon defense, then the carried plan), still scoring
+every candidate so the flag and the top equity can differ.
+`breaks_a_moon_the_rollouts_never_see` and
+`a_carried_moon_plan_pins_the_hint` check the agreement.  The terminal
+and web hint bots carry a plan through `set_moon_plan` once the human
+plays the flagged shot.
+
 [`MonteCarloBot::assess`](../src/mc.rs) scores candidates and calls
 `recommended` directly. It bypasses both the live `moon_defense`
 override and the carried shooting plan used by `play_card`, despite

@@ -96,6 +96,11 @@ struct Core {
     /// A seed stream for the Hint button, apart from the deal so asking for
     /// a hint never disturbs the game's own randomness.
     hint_rng: StdRng,
+    /// The card of the moon shot the last hint on this decision flagged.
+    hint_shot: Option<Card>,
+    /// Whether the human played a flagged shot, so the next hint carries
+    /// the plan.  Hint bots are built fresh, so the plan lives here.
+    hint_plan: bool,
     round_no: u32,
     log: Vec<String>,
     /// Cumulative totals after each recorded round, for the score sheet.
@@ -135,6 +140,8 @@ impl Core {
             // A distinct stream: xoring keeps the first hint seed from
             // colliding with the bots' own MC seeds drawn from `rng`.
             hint_rng: StdRng::seed_from_u64(seed ^ 0x4849_4E54),
+            hint_shot: None,
+            hint_plan: false,
             round_no: 1,
             log: vec![round_header(1, direction)],
             score_sheet: Vec::new(),
@@ -182,12 +189,19 @@ impl Core {
 
         let before = self.table.round().clone();
         self.last_move = None;
+        // Forced plays step through `step_once`, so this is a real choice:
+        // following the flagged shot keeps the plan, anything else drops it.
+        let plan = matches!(action, HumanAction::Play(card) if self.hint_shot == Some(card));
         self.pending.action = Some(action);
         if let Err(e) = self.table.step(&mut self.pending) {
             // A well-behaved UI only offers legal moves; surface the rest.
             self.log.push(format!("Illegal: {e}"));
             self.pending.action = None;
             return;
+        }
+        if phase == Phase::Playing {
+            self.hint_plan = plan;
+            self.hint_shot = None;
         }
         self.narrate(HUMAN, &before);
         self.last_move = self.move_for(HUMAN, &before);
@@ -249,9 +263,14 @@ impl Core {
             return Vec::new();
         }
         let seed = self.hint_rng.random();
-        MonteCarloBot::new(StdRng::seed_from_u64(seed))
-            .samples(samples)
-            .assess(&self.table.view(HUMAN))
+        let mut hinter = MonteCarloBot::new(StdRng::seed_from_u64(seed)).samples(samples);
+        hinter.set_moon_plan(self.hint_plan);
+        let rows = hinter.assess(&self.table.view(HUMAN));
+        self.hint_shot = rows
+            .iter()
+            .find(|row| row.recommended && row.shoot)
+            .and_then(|row| row.action.strip_prefix("shoot, play ")?.parse().ok());
+        rows
     }
 
     /// The move just applied, for the UI to animate.
@@ -886,6 +905,23 @@ mod tests {
         assert!(!hints.is_empty(), "the pass is a real choice");
         assert!(hints.iter().all(|h| (0.0..=1.0).contains(&h.equity)));
         assert_eq!(hints.iter().filter(|h| h.recommended).count(), 1);
+    }
+
+    #[test]
+    fn only_a_followed_shot_carries_the_hint_plan() {
+        let mut core = Core::new("greedy", "", 42);
+        settle(&mut core);
+        act_greedily(&mut core); // the pass
+        // Two real play decisions: follow the flagged shot, then stray.
+        for follow in [true, false] {
+            settle(&mut core);
+            let legal: Vec<Card> = core.table.view(HUMAN).legal_plays().into_iter().collect();
+            assert!(legal.len() > 1, "a real choice");
+            core.hint_shot = Some(legal[0]);
+            core.play(&legal[usize::from(!follow)].to_string());
+            assert_eq!(core.hint_plan, follow);
+            assert_eq!(core.hint_shot, None);
+        }
     }
 
     #[test]

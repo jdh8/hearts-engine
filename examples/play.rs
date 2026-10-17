@@ -199,6 +199,16 @@ fn print_hints(rows: &[Assessment]) {
 /// so asking for a hint never perturbs the game's own randomness.
 struct HumanCli {
     hinter: MonteCarloBot<StdRng>,
+    /// The card of the moon shot the last hint on this decision flagged.
+    /// Playing it carries the plan into the next hint; anything else drops
+    /// it.
+    shot: Option<Card>,
+}
+
+/// The card of the flagged moon shot among `rows`, if the pick is one
+fn flagged_shot(rows: &[Assessment]) -> Option<Card> {
+    let pick = rows.iter().find(|row| row.recommended && row.shoot)?;
+    pick.action.strip_prefix("shoot, play ")?.parse().ok()
 }
 
 impl Strategy for HumanCli {
@@ -246,13 +256,21 @@ impl Strategy for HumanCli {
             let command =
                 read_command("Your play [<card> / hint / quit]:").unwrap_or_else(|| "quit".into());
             match command.as_str() {
-                "hint" | "h" => print_hints(&self.hinter.assess(view)),
+                "hint" | "h" => {
+                    let rows = self.hinter.assess(view);
+                    self.shot = flagged_shot(&rows);
+                    print_hints(&rows);
+                }
                 "quit" => std::process::exit(0),
                 text => {
                     let Some(card) = resolve_card(text, view.hand()) else {
                         continue;
                     };
                     if view.legal_plays().contains(card) {
+                        // A forced card neither starts nor breaks a plan.
+                        if view.legal_plays().len() > 1 {
+                            self.hinter.set_moon_plan(self.shot.take() == Some(card));
+                        }
                         return card;
                     }
                     println!(
@@ -293,6 +311,7 @@ fn main() -> Result<()> {
     ];
     let mut human = HumanCli {
         hinter: MonteCarloBot::new(StdRng::seed_from_u64(seed.unwrap_or(0))).samples(128),
+        shot: None,
     };
     let rules = Rules::new();
     let mut game = hearts_engine::hearts::Game::new(rules);

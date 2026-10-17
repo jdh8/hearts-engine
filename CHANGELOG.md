@@ -7,11 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.2] — Unreleased
 
+### Added
+
+- `Assessment::shoot` flags a moon-attempt row, and
+  `MonteCarloBot::set_moon_plan` lets an assess-only hint bot carry a plan
+  its seat chose.  The terminal and web hints use them: playing the flagged
+  shot keeps the plan for the next hint, and any other card drops it.
+
 ### Fixed
 
 - `MonteCarloBot` no longer carries a completed moon plan into the next
   round when its first play there is forced: the plan reset now runs before
   the forced-card and moon-defense early returns.
+- `MonteCarloBot::assess` now flags the move `play_card` would make, moon
+  defense and a carried moon plan included, instead of the raw search pick;
+  the terminal and web hints no longer advise ducking a trick the bot takes
+  to break an opponent's moon.
 
 ### Internal
 

@@ -157,10 +157,15 @@ pub struct Assessment {
     /// same worlds as [`equity`](Self::equity).
     pub ev: f64,
     /// Whether this is the bot's own pick — the move a [`Strategy`] method
-    /// would return on this view.  Because the bot deviates from the greedy
-    /// baseline only on a statistically clear gain, this need not be the
-    /// highest-equity candidate.
+    /// would return on this view, moon defense and a carried moon plan
+    /// included.  Because the bot deviates from the greedy baseline only on
+    /// a statistically clear gain, and those overrides do not consult the
+    /// rollouts at all, this need not be the highest-equity candidate.
     pub recommended: bool,
+    /// Whether this move is a moon attempt — starting one, or the next card
+    /// of a carried plan.  A caller advising a seat that plays the flagged
+    /// shot can carry the plan with [`MonteCarloBot::set_moon_plan`].
+    pub shoot: bool,
 }
 
 impl<R: Rng> MonteCarloBot<R> {
@@ -221,6 +226,16 @@ impl<R: Rng> MonteCarloBot<R> {
     pub const fn pass_model(mut self, config: HeuristicConfig) -> Self {
         self.pass_model = config;
         self
+    }
+
+    /// Adopt or drop a moon plan for the seat this bot advises
+    ///
+    /// [`play_card`](Strategy::play_card) carries its own plans; this is
+    /// for a bot that only [`assess`](Self::assess)es, advising a seat that
+    /// chose the flagged [`shoot`](Assessment::shoot) move itself.  The
+    /// plan still ends with its round, or once another seat scores.
+    pub const fn set_moon_plan(&mut self, shooting: bool) {
+        self.shooting = shooting;
     }
 
     /// How many shoot-the-moon plans this bot has begun
@@ -429,6 +444,40 @@ impl<R: Rng> MonteCarloBot<R> {
         scored
     }
 
+    /// The play the live policy makes without searching, and whether it is
+    /// the moon plan's: the moon-defense overlay, or the carried shot
+    ///
+    /// Shared by [`Strategy::play_card`] and [`assess`](Self::assess), so a
+    /// hint flags the card the bot would actually play.  Draws no
+    /// randomness, so seeded play stays reproducible.
+    fn preempt(&mut self, view: &View<'_>) -> Option<(Card, bool)> {
+        // A moon is a plan, not a card, and the rollouts that chose it
+        // priced thirteen tricks of shooting.  Re-deciding it every trick
+        // instead measured out at three overrides in ten — the search kept
+        // wandering back to the greedy line holding points it had already
+        // paid for, which is the worst of both.  So carry the plan: the
+        // first trick of a round clears it, another seat scoring kills it,
+        // and in between the shot is simply played.  Reset before anything
+        // returns, or a forced first card carries last round's plan over.
+        if view.tricks().is_empty()
+            || Seat::ALL
+                .into_iter()
+                .any(|seat| seat != view.seat() && view.points_taken(seat) > 0)
+        {
+            self.shooting = false;
+        }
+        // Reactive moon defense: the rollout policy models every opponent as
+        // a greedy ducker who never shoots the moon, so the search is blind
+        // to a moon in progress.  Break it with the same overlay HeuristicBot
+        // uses (threshold 8, its default).
+        if let Some(card) = moon_defense(view, 8) {
+            return Some((card, false));
+        }
+        let trick = view.current_trick()?;
+        self.shooting
+            .then(|| (shoot_play(view.legal_plays(), trick, view.played()), true))
+    }
+
     /// Assess every candidate action for the current decision, each with
     /// its Monte Carlo equity and expected round points, ranked by equity
     /// with the bot's own pick flagged — the read a solver or hint view
@@ -444,10 +493,34 @@ impl<R: Rng> MonteCarloBot<R> {
     /// sampled for (e.g. a seat mid-pass).
     #[must_use]
     pub fn assess(&mut self, view: &View<'_>) -> Vec<Assessment> {
-        let candidates = self.candidates(view);
+        let pinned = if view.phase() == Phase::Playing {
+            self.preempt(view)
+        } else {
+            None
+        };
+        let mut candidates = self.candidates(view);
         if candidates.is_empty() {
             return Vec::new();
         }
+        // The live policy's own card, when it pre-empts the search, must be
+        // a row to flag — collapsing or the cap may have dropped it.  A fully
+        // collapsed set already ties every play, the pinned one included.
+        let pinned = pinned
+            .filter(|_| candidates.len() > 1)
+            .map(|(card, shoot)| {
+                let pin = |c: &Candidate| {
+                    c.shoot == shoot && matches!(c.choice, Choice::Play(p) if p == card)
+                };
+                candidates.iter().position(pin).unwrap_or_else(|| {
+                    let label = if shoot { "shoot, play" } else { "play" };
+                    candidates.push(Candidate {
+                        label: format!("{label} {card}"),
+                        choice: Choice::Play(card),
+                        shoot,
+                    });
+                    candidates.len() - 1
+                })
+            });
         let scored = self.score(view, &candidates);
         if scored[0].0.is_empty() {
             // No consistent world: averaging zero rollouts would put NaN
@@ -472,11 +545,12 @@ impl<R: Rng> MonteCarloBot<R> {
                     equity,
                     ev,
                     recommended: true,
+                    shoot: false,
                 })
                 .collect();
         }
 
-        let best = recommended(&scored, &candidates, self.gate);
+        let best = pinned.unwrap_or_else(|| recommended(&scored, &candidates, self.gate));
         let mut out: Vec<Assessment> = candidates
             .iter()
             .zip(&scored)
@@ -488,6 +562,7 @@ impl<R: Rng> MonteCarloBot<R> {
                     equity,
                     ev,
                     recommended: i == best,
+                    shoot: candidate.shoot,
                 }
             })
             .collect();
@@ -900,27 +975,7 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
     }
 
     fn play_card(&mut self, view: &View<'_>) -> Card {
-        // A moon is a plan, not a card, and the rollouts that chose it
-        // priced thirteen tricks of shooting.  Re-deciding it every trick
-        // instead measured out at three overrides in ten — the search kept
-        // wandering back to the greedy line holding points it had already
-        // paid for, which is the worst of both.  So carry the plan: the
-        // first trick of a round clears it, another seat scoring kills it,
-        // and in between the shot is simply played.  Reset before the early
-        // returns, or a forced first card carries last round's plan over.
-        if view.tricks().is_empty()
-            || Seat::ALL
-                .into_iter()
-                .any(|seat| seat != view.seat() && view.points_taken(seat) > 0)
-        {
-            self.shooting = false;
-        }
-        // Reactive moon defense: the rollout policy models every opponent as
-        // a greedy ducker who never shoots the moon, so the search is blind
-        // to a moon in progress.  Break it with the same overlay HeuristicBot
-        // uses (threshold 8, its default).  Draws no randomness, so seeded
-        // play stays reproducible.
-        if let Some(card) = moon_defense(view, 8) {
+        if let Some((card, _)) = self.preempt(view) {
             return card;
         }
         let legal = view.legal_plays();
@@ -930,10 +985,6 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
             return legal.into_iter().next().expect("checked non-empty");
         }
         let trick = view.current_trick().expect("a play decision has a trick");
-
-        if self.shooting {
-            return shoot_play(legal, trick, view.played());
-        }
 
         let candidates = self.candidates(view);
         if candidates.len() < 2 {
@@ -1716,6 +1767,12 @@ mod tests {
         let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(1)).samples(64);
         assert_eq!(bot.play_card(&view), card("K♠"));
         assert_eq!(bot.moon_attempts(), 0);
+        // The hint flags the same break, though the rollouts prefer ducking.
+        let mut hinter = MonteCarloBot::new(StdRng::seed_from_u64(1)).samples(64);
+        let rows = hinter.assess(&view);
+        let picks: Vec<_> = rows.iter().filter(|r| r.recommended).collect();
+        assert_eq!(picks.len(), 1);
+        assert_eq!(picks[0].action, "play K♠");
 
         // East already holds points, so the moon is dead for North and the
         // shoot candidate is not even generated.
@@ -1723,6 +1780,43 @@ mod tests {
             !play_candidates(&view).iter().any(|c| c.shoot),
             "a dead moon is not a candidate",
         );
+    }
+
+    #[test]
+    fn a_carried_moon_plan_pins_the_hint() {
+        // A hint must flag the plan's card even on a hand where the search
+        // would never start a shot: equal bot state, equal seeds, one pick.
+        let mut table = fixed_table();
+        let mut greedy = crate::HeuristicBot::new();
+        while table.round().tricks().is_empty() {
+            table.step(&mut greedy).expect("greedy plays are legal");
+        }
+        let me = table.turn().expect("trick two has a mover");
+        let view = table.view(me);
+        assert!(
+            Seat::ALL
+                .into_iter()
+                .all(|seat| view.points_taken(seat) == 0)
+        );
+        let bot = || MonteCarloBot::new(StdRng::seed_from_u64(4)).samples(32);
+        assert!(
+            !bot()
+                .assess(&view)
+                .iter()
+                .any(|r| r.recommended && r.action.starts_with("shoot")),
+            "the fixture must not shoot unaided",
+        );
+
+        let (mut player, mut hinter) = (bot(), bot());
+        player.set_moon_plan(true);
+        hinter.set_moon_plan(true);
+        let played = player.play_card(&view);
+        let rows = hinter.assess(&view);
+        let picks: Vec<_> = rows.iter().filter(|r| r.recommended).collect();
+        assert_eq!(picks.len(), 1);
+        assert_eq!(picks[0].action, format!("shoot, play {played}"));
+        assert!(picks[0].shoot);
+        assert!(player.shooting && hinter.shooting, "the plan survives");
     }
 
     #[test]
