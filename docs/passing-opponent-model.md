@@ -1,6 +1,6 @@
 # Opponent-aware passing — pricing what the other three seats pass
 
-**Status: IN PROGRESS (2026-08-08).**  P0 and P1 have shipped; P2 and P4
+**Status: PARKED (2026-09-29).**  P0 and P1 have shipped; P2 and P4
 are closed as nulls.  P3 closed 2026-09-29: (ii) shipped, (i) refuted.
 P5 closed the same day as a null.  Its sweep found a global retune,
 `spade_guards` 5→4, which shipped.  Only the parked P6 remains.  See each
@@ -136,7 +136,7 @@ information whitelist forbids the evidence by construction.
 | P0 | name the model roles | none (plumbing) | enabler | **shipped** |
 | P1 | measure the incoming prior | none (offline) | measurement | **measured** |
 | P2 | noisy opponent generator | worlds | cheap experiment | **null, reverted** |
-| P3 | prior-informed `pass_score` | all four | high ceiling | blocked on the sibling doc |
+| P3 | prior-informed `pass_score` | all four | high ceiling | **(ii) shipped; (i) refuted, reverted** |
 | P4 | settle the 0.75 constant | observation | measurement | **stage one done; kept, closed** |
 | P5 | direction-conditioned config | self | speculative | **null; spun off `spade_guards = 4`, shipped** |
 | P6 | shooter-aware opponents | worlds | parked | parked |
