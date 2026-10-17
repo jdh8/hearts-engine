@@ -184,7 +184,7 @@ fn print_hints(rows: &[Assessment]) {
         let line = format!(
             "  {mark} {:<22} place {:>4.2}   EV {:>4.1} points",
             row.action,
-            4.0 - 3.0 * row.equity,
+            (4.0 - 3.0 * row.equity).clamp(1.0, 4.0),
             row.ev,
         );
         if row.recommended {

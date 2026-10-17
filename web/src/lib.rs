@@ -674,7 +674,7 @@ impl WebGame {
             .into_iter()
             .map(|a| HintJson {
                 action: a.action,
-                place: 4.0 - 3.0 * a.equity,
+                place: (4.0 - 3.0 * a.equity).clamp(1.0, 4.0),
                 ev: a.ev,
                 recommended: a.recommended,
             })
@@ -903,7 +903,7 @@ mod tests {
         settle(&mut core);
         let hints = core.hint(32);
         assert!(!hints.is_empty(), "the pass is a real choice");
-        assert!(hints.iter().all(|h| (0.0..=1.0).contains(&h.equity)));
+        assert!(hints.iter().all(|h| h.equity.is_finite()));
         assert_eq!(hints.iter().filter(|h| h.recommended).count(), 1);
     }
 

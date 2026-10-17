@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its seat chose.  The terminal and web hints use them: playing the flagged
   shot keeps the plan for the next hint, and any other card drops it.
 
+### Changed
+
+- `MonteCarloBot` prices a rollout that does not end the game at `0.5`
+  plus the round margin over 24 points rather than 112.  The old band
+  kept mid-game values inside `(1/4, 3/4)` and over-weighted rollouts that
+  end the game; over 8,000 paired games against the greedy field the new
+  scale scores `rank +0.019 ± 0.003`, `win +0.013 ± 0.002` and
+  `points +0.024 ± 0.009`.  `Assessment::equity` may now leave `[0, 1]`;
+  the terminal and web hints clamp expected place to `[1, 4]`.
+
 ### Fixed
 
 - `MonteCarloBot` no longer carries a completed moon plan into the next

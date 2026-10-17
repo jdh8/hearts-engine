@@ -1,9 +1,10 @@
 # Hearts engine improvement review
 
-**Status: OPEN (2026-10-18).** Reviewed version 0.1.1 at `e76c139`.
+**Status: CLOSED (2026-10-18).** Reviewed version 0.1.1 at `e76c139`.
 Two reproducible correctness bugs and one verification gap should be
 addressed before another strategy-tuning campaign. Score-aware midgame
-play is a separate, unmeasured research opportunity.
+play was a separate research opportunity; it closed by rescaling the
+mid-game margin instead.
 
 ## Reset moon plans before forced plays
 
@@ -100,6 +101,44 @@ result in both builds would be a smaller but narrower guard. Keep
 within-build repeatability as a separate claim.
 
 ## Investigate score-aware midgame play
+
+**Status: done in 0.1.2** — score-aware equity tied a plain steeper
+margin; the margin's scale was the real lever, and `/112` became `/24`.
+
+All runs below are `--games` A/Bs of `mc:128` in slot 1 against three
+`greedy` seats, 4,000 blocks unless noted, deltas as `rank` / `win` /
+`points`.
+
+**Standings model.**  Each opponent beaten with logistic probability in
+the post-round total gap at `spread · √rounds_left` points (rounds left
+from the leader's distance to the target over 8), expected matchpoints
+squeezed into the (¼, ¾) band.  Seed 1 peaked at spread 3.5–7
+(`rank +0.033` and `+0.024`, 5.2 and 4.0 SE) and fell off both ways
+(0.875: −4.7 SE; 28: −6.6 SE).  Seed 2 confirmed spread 7:
+`rank +0.033 ± 0.006`, `win +0.023 ± 0.004`, `points −0.09 ± 0.02`.
+
+**The control.**  `spread` also sets how steep the mid-game values are
+against the fixed terminal matchpoints, so the plain margin was rerun at
+other scales.  It improved monotonically from `/112` down to a plateau:
+`/80` `rank +0.011`, `/40` `+0.015`, `/28` `+0.020`, `/20` `+0.020`,
+then `/14` `+0.014`, all on seed 1.  Head-to-head on seed 4 over 8,000
+blocks, spread 7 minus `/24`: `rank +0.001 ± 0.004` (+0.3 SE),
+`win +0.005 ± 0.003` (+1.9 SE), `points −0.133 ± 0.015`,
+`not-last −2.6 SE`.  The standings model buys nothing measurable over
+the rescaled margin.
+
+**Shipped.**  `/24` against `/112` on fresh seed 5, 8,000 blocks:
+`rank +0.019 ± 0.003` (+6.3 SE), `win +0.013 ± 0.002` (+6.9 SE),
+`not-last +0.004 ± 0.001`, `points +0.024 ± 0.009`, moons per round
+`−0.005` (−22.7 SE).  The equity is affine in the margin, so the
+moon-majority break-even is unchanged.  The cost is the old band:
+mid-game values now leave `[0, 1]`, and the hints clamp expected place
+to `[1, 4]`.  Equity costs nothing next to the rollouts, so wall-clock is
+unchanged.
+
+**Not ruled out.**  This tests one family of score-aware equities.
+Score-conditioned passing, moon decisions read off the standings, and a
+standings model fitted to arena data rather than hand-built stay open.
 
 The current `equity` function uses running standings to detect and rank
 a game-ending rollout. If the game continues, it uses only the round's

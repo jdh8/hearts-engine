@@ -100,9 +100,11 @@ what they removed:
   across the two builds.
 - Equity at a game-ending rollout is normalized `3-2-1-0` matchpoints,
   ties averaged (sole win 1, sole last 0 — the arena's `rank` column);
-  else `0.5 + margin/112` pinned inside (¼, ¾), strictly below a sole
-  win and above a sole last, middle placements interleaving by design.
-  Player-facing surfaces show expected place, `4 − 3·equity`.
+  else `0.5 + margin/24`, a measured scale.  A lopsided round may leave
+  `[0, 1]` and outrank a placement (a moon beats a sole win); do not
+  re-pin it inside (¼, ¾) — `/112` did, and lost `rank` by 6 SE.
+  Player-facing surfaces show expected place, `4 − 3·equity` clamped to
+  `[1, 4]`.
 - `Table::step` must leave the table untouched on `IllegalAction`.
 
 ## wasm traps (web/)

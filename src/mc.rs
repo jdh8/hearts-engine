@@ -143,12 +143,12 @@ pub struct Assessment {
     /// A rendered label for the action, e.g. `"play Q♠"` or
     /// `"pass Q♠ A♥ K♥"`.
     pub action: String,
-    /// Mean equity in `[0, 1]` — the quantity the bot maximizes, so
-    /// candidates rank by it.  A rollout that ends the game pays its
-    /// normalized `3-2-1-0` matchpoints (a sole win 1, a sole last 0,
-    /// ties averaged); one that does not pays the mid-game margin band.
-    /// For a player-facing figure, `4 − 3·equity` is the expected
-    /// finishing place.  A candidate the bot eliminated early averages
+    /// Mean equity — the quantity the bot maximizes, so candidates rank by
+    /// it.  A rollout that ends the game pays its normalized `3-2-1-0`
+    /// matchpoints (a sole win 1, a sole last 0, ties averaged); one that
+    /// does not pays `0.5` plus the round margin over 24, which a lopsided
+    /// round carries outside `[0, 1]`.  For a player-facing figure,
+    /// `4 − 3·equity` clamped to `[1, 4]` is the expected finishing place.  A candidate the bot eliminated early averages
     /// over the worlds it saw before elimination rather than the full
     /// sample count.
     pub equity: f64,
@@ -868,10 +868,11 @@ fn contested(scored: &[Scored], alive: &[usize], gate: f64) -> bool {
 /// through edges that are not there: measured against the greedy field, the
 /// gate alone attempted a moon in two rounds in five to land one in twenty,
 /// at a cost of over two points a round.  The break-even is arithmetic
-/// rather than taste.  A moon is worth `0.5 + 26/112 ≈ 0.732` mid-game, a
+/// rather than taste.  A moon is worth `0.5 + 26/24 ≈ 1.58` mid-game, a
 /// failed shot leaves us holding about half the deck's points for roughly
-/// `0.423`, and the greedy line is worth about `0.577`; the indifference
-/// point between them sits within a hair of an even chance.  A moon rate
+/// `0.14`, and the greedy line is worth about `0.86`; the indifference
+/// point between them sits within a hair of an even chance, whatever the
+/// margin's scale, since the mid-game value is affine in it.  A moon rate
 /// over the sampled worlds is a plain Bernoulli count with none of the tail
 /// trouble, so require it to be a majority.
 fn recommended(scored: &[Scored], candidates: &[Candidate], gate: f64) -> usize {
@@ -934,13 +935,16 @@ fn absolute_standing(me: Seat, relative: [u16; 4]) -> [u16; 4] {
 /// same payoff the arena's `rank` column scores, so the search keeps
 /// fighting for placement after the win is gone.  Short of a clinch the
 /// value is `0.5` plus the margin between the opponents' average round
-/// points and ours, scaled into `(1/4, 3/4)` — strictly below a sole win
-/// and strictly above a sole last, so [`beats`] deviates from the
-/// round-point objective only when a rollout can actually end the game.
-/// A two-way crown (⅚) also outranks any running position; deeper ties
-/// and the middle placements interleave with the band on purpose — a
-/// middling finish is commensurate with a middling position in a game
-/// still running.
+/// points and ours, over 24 points.  That lets a lopsided round outweigh
+/// a placement: a clean round against a queen-eater is worth a third of a
+/// matchpoint, and a moon more than a sole win.  The scale is measured,
+/// not derived.  The old `/112` pinned the band inside `(1/4, 3/4)`,
+/// strictly between a sole last and a sole win, and so over-weighted the
+/// rollouts that end the game: over 8,000 paired games `/24` scored
+/// `rank +0.019 ± 0.003` and `win +0.013 ± 0.002` against it, `/20` to
+/// `/28` level and both `/14` and `/40` worse.  A score-aware alternative
+/// (each opponent beaten with logistic probability in the post-round total
+/// gap) tied `/24` on `rank`.
 fn equity(scores: &[u16; 4], me: Seat, standing: [u16; 4], rules: &Rules) -> f64 {
     let mut totals = standing;
     for seat in Seat::ALL {
@@ -962,7 +966,7 @@ fn equity(scores: &[u16; 4], me: Seat, standing: [u16; 4], rules: &Rules) -> f64
         .map(|&seat| f64::from(scores[seat as usize]))
         .sum::<f64>()
         / 3.0;
-    0.5 + (others - mine) / 112.0
+    0.5 + (others - mine) / 24.0
 }
 
 impl<R: Rng> Strategy for MonteCarloBot<R> {
@@ -1229,7 +1233,7 @@ mod tests {
         // Exactly the target ends the game; one point short stays a round.
         assert_eq!(equity(&[13, 13, 0, 0], me, [87, 0, 0, 0], &rules), 0.0);
         let running = equity(&[13, 13, 0, 0], me, [86, 0, 0, 0], &rules);
-        assert!((0.25..=0.75).contains(&running), "{running} is mid-game");
+        assert!(running > 0.0, "{running} is mid-game");
     }
 
     #[test]
@@ -1245,9 +1249,8 @@ mod tests {
         // Relative to the field, eating the queen and being mooned cost
         // the same 8⅔-point margin — the measure is zero-sum on purpose.
         assert!((queen - mooned).abs() < 1e-12);
-        for value in [clean, queen, moon, mooned] {
-            assert!((0.25..=0.75).contains(&value), "{value} is mid-game");
-        }
+        // A moon outranks a sole win; a clean round does not.
+        assert!(moon > 1.0 && clean < 1.0);
     }
 
     #[test]
@@ -1540,7 +1543,7 @@ mod tests {
             return;
         }
         for row in &rows {
-            assert!((0.0..=1.0).contains(&row.equity));
+            assert!(row.equity.is_finite());
             assert!(row.ev >= 0.0);
         }
         assert!(rows.windows(2).all(|w| w[0].equity >= w[1].equity));
