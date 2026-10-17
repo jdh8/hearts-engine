@@ -130,9 +130,8 @@ today.  Same results in the same order; only the rayon job count changes
 from `|candidates|` calls of 32 jobs to one call of `32 × |candidates|`.
 
 **Coupling.**  `parallel` feature only; the serial build and the wasm
-front end are untouched.  The bit-identity test
-(`seeded_pick_is_identical_across_serial_and_parallel_builds`) is the
-guard.
+front end are untouched.  CI's `parallel-equivalence` job, which diffs
+seeded arena CSVs across the two builds, is the guard.
 
 **Measurement.**  Not arena throughput: the arena's block-level
 `into_par_iter` already saturates the cores, so a +0% there says

@@ -96,7 +96,8 @@ what they removed:
   past the paired significance gate in `beats` (`gate()`, default
   1.5 SE — measured, not taste).  The `parallel` feature must stay
   bit-identical: batch results are collected in world order and reduced
-  sequentially.
+  sequentially; CI's `parallel-equivalence` job diffs a seeded arena CSV
+  across the two builds.
 - Equity at a game-ending rollout is normalized `3-2-1-0` matchpoints,
   ties averaged (sole win 1, sole last 0 — the arena's `rank` column);
   else `0.5 + margin/112` pinned inside (¼, ¾), strictly below a sole

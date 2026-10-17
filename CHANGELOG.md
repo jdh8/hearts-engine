@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   identified the serial/parallel equivalence test gap, and scoped a
   score-aware midgame experiment. Includes reproduction steps and acceptance
   criteria.
+- CI's new `parallel-equivalence` job requires byte-identical seeded arena
+  CSVs from the default and `parallel` builds; the unit test that claimed
+  this but only checked within-build repeatability is renamed
+  `seeded_pick_is_repeatable`.
 
 ## [0.1.1] — 2026-10-18
 

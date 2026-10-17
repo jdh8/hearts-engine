@@ -49,6 +49,20 @@ jobs:
     - name: Check (all features, all targets)
       run: cargo check --all-features --all-targets
 
+  # The `parallel` feature must not change a single decision.  Unit tests
+  # only prove repeatability within one build, so play the same seeded
+  # arena in both builds and require byte-identical per-block CSVs.
+  parallel-equivalence:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Serial arena
+      run: cargo run --release --example arena -- --blocks 200 --seed 7 --csv mc:64 greedy greedy greedy > serial.csv
+    - name: Parallel arena
+      run: cargo run --release --example arena --features parallel -- --blocks 200 --seed 7 --csv mc:64 greedy greedy greedy > parallel.csv
+    - name: Compare
+      run: cmp serial.csv parallel.csv
+
   test:
     strategy:
       fail-fast: false

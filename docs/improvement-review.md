@@ -81,6 +81,11 @@ different random samples.
 
 ## Enforce serial and parallel equivalence
 
+**Status: fixed in 0.1.2** — CI's `parallel-equivalence` job plays
+`--blocks 200 --seed 7 --csv mc:64 greedy greedy greedy` in both builds
+and `cmp`s the CSVs.  The unit test is renamed
+`seeded_pick_is_repeatable` and claims only within-build repeatability.
+
 The test `seeded_pick_is_identical_across_serial_and_parallel_builds`
 in [`src/mc.rs`](../src/mc.rs) runs two identically seeded bots inside
 one build and compares their cards. It proves repeatability within

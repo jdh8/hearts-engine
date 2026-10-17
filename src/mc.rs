@@ -1676,13 +1676,11 @@ mod tests {
     }
 
     #[test]
-    fn seeded_pick_is_identical_across_serial_and_parallel_builds() {
-        // The `parallel` feature must not change a single decision: batch
-        // results are collected in world order and reduced sequentially in
-        // both builds.  CI runs the suite with and without the feature; a
-        // failure in only one build means the parallel reduce stopped
-        // being order-exact.  Re-pin the expected card whenever sampling
-        // logic changes.
+    fn seeded_pick_is_repeatable() {
+        // Two identically seeded bots must agree within one build.  This
+        // cannot see serial/parallel drift — each build only compares with
+        // itself; CI's `parallel-equivalence` job diffs arena output across
+        // the two builds for that.
         let table = mid_round();
         let me = table.turn().expect("a mid-round table has a mover");
         let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(11)).samples(64);
