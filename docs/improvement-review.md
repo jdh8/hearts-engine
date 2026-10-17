@@ -49,7 +49,13 @@ every candidate so the flag and the top equity can differ.
 `breaks_a_moon_the_rollouts_never_see` and
 `a_carried_moon_plan_pins_the_hint` check the agreement.  The terminal
 and web hint bots carry a plan through `set_moon_plan` once the human
-plays the flagged shot.
+plays the flagged shot.  A completion review found two gaps, both fixed
+in 0.1.2: the frontends kept a plan across a new deal when the human's
+opening play was forced (the engine's first-trick reset never ran), and
+a fully collapsed hint tied every legal play with `shoot: false`, so
+following the carried shot dropped the plan.  Both frontends now reset
+hint state per deal (`a_new_deal_drops_the_hint_plan` covers the web),
+and tied rows keep the shot's flag (`a_collapsed_shot_keeps_its_flag`).
 
 [`MonteCarloBot::assess`](../src/mc.rs) scores candidates and calls
 `recommended` directly. It bypasses both the live `moon_defense`
@@ -170,4 +176,5 @@ strength and pass-prior measurements were not run.
 Both bug reproductions failed as expected in an isolated copy. Their
 fixture names and reproduction steps above preserve the evidence;
 the repository's runtime code and test suite were unchanged by the
-review. The fixes and automated equivalence check remain open.
+review. All of them have since landed in 0.1.2; each section's status
+names its regression tests.

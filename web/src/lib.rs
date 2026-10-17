@@ -96,8 +96,9 @@ struct Core {
     /// A seed stream for the Hint button, apart from the deal so asking for
     /// a hint never disturbs the game's own randomness.
     hint_rng: StdRng,
-    /// The card of the moon shot the last hint on this decision flagged.
-    hint_shot: Option<Card>,
+    /// The cards of the moon shot the last hint on this decision flagged —
+    /// several when the legal plays tie.
+    hint_shot: Hand,
     /// Whether the human played a flagged shot, so the next hint carries
     /// the plan.  Hint bots are built fresh, so the plan lives here.
     hint_plan: bool,
@@ -140,7 +141,7 @@ impl Core {
             // A distinct stream: xoring keeps the first hint seed from
             // colliding with the bots' own MC seeds drawn from `rng`.
             hint_rng: StdRng::seed_from_u64(seed ^ 0x4849_4E54),
-            hint_shot: None,
+            hint_shot: Hand::EMPTY,
             hint_plan: false,
             round_no: 1,
             log: vec![round_header(1, direction)],
@@ -191,7 +192,7 @@ impl Core {
         self.last_move = None;
         // Forced plays step through `step_once`, so this is a real choice:
         // following the flagged shot keeps the plan, anything else drops it.
-        let plan = matches!(action, HumanAction::Play(card) if self.hint_shot == Some(card));
+        let plan = matches!(action, HumanAction::Play(card) if self.hint_shot.contains(card));
         self.pending.action = Some(action);
         if let Err(e) = self.table.step(&mut self.pending) {
             // A well-behaved UI only offers legal moves; surface the rest.
@@ -201,7 +202,7 @@ impl Core {
         }
         if phase == Phase::Playing {
             self.hint_plan = plan;
-            self.hint_shot = None;
+            self.hint_shot = Hand::EMPTY;
         }
         self.narrate(HUMAN, &before);
         self.last_move = self.move_for(HUMAN, &before);
@@ -268,8 +269,9 @@ impl Core {
         let rows = hinter.assess(&self.table.view(HUMAN));
         self.hint_shot = rows
             .iter()
-            .find(|row| row.recommended && row.shoot)
-            .and_then(|row| row.action.strip_prefix("shoot, play ")?.parse().ok());
+            .filter(|row| row.recommended && row.shoot)
+            .filter_map(|row| row.action.strip_prefix("shoot, play ")?.parse().ok())
+            .collect();
         rows
     }
 
@@ -410,6 +412,10 @@ impl Core {
         self.last_move = None;
         self.last_result = None;
         self.round_no += 1;
+        // A plan is round-specific, and a forced opening play would carry
+        // it past the engine's own first-trick reset.
+        self.hint_plan = false;
+        self.hint_shot = Hand::EMPTY;
         self.table = Table::new(self.game.deal(&mut self.rng)).scores(self.game.scores());
         self.log
             .push(round_header(self.round_no, self.table.round().direction()));
@@ -917,11 +923,30 @@ mod tests {
             settle(&mut core);
             let legal: Vec<Card> = core.table.view(HUMAN).legal_plays().into_iter().collect();
             assert!(legal.len() > 1, "a real choice");
-            core.hint_shot = Some(legal[0]);
+            core.hint_shot = [legal[0]].into_iter().collect();
             core.play(&legal[usize::from(!follow)].to_string());
             assert_eq!(core.hint_plan, follow);
-            assert_eq!(core.hint_shot, None);
+            assert_eq!(core.hint_shot, Hand::EMPTY);
         }
+    }
+
+    #[test]
+    fn a_new_deal_drops_the_hint_plan() {
+        let mut core = Core::new("greedy", "1000", 8);
+        loop {
+            settle(&mut core);
+            if core.awaiting_continue {
+                break;
+            }
+            act_greedily(&mut core);
+        }
+        // Last round's followed shot must not pin the next round's hints:
+        // a forced opening play never reaches the engine's own reset.
+        core.hint_plan = true;
+        core.hint_shot = "2♣".parse().into_iter().collect();
+        core.next_deal();
+        assert!(!core.hint_plan);
+        assert_eq!(core.hint_shot, Hand::EMPTY);
     }
 
     #[test]

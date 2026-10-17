@@ -199,16 +199,19 @@ fn print_hints(rows: &[Assessment]) {
 /// so asking for a hint never perturbs the game's own randomness.
 struct HumanCli {
     hinter: MonteCarloBot<StdRng>,
-    /// The card of the moon shot the last hint on this decision flagged.
-    /// Playing it carries the plan into the next hint; anything else drops
+    /// The cards of the moon shot the last hint on this decision flagged —
+    /// several when the legal plays tie.
+    /// Playing one carries the plan into the next hint; anything else drops
     /// it.
-    shot: Option<Card>,
+    shot: Hand,
 }
 
-/// The card of the flagged moon shot among `rows`, if the pick is one
-fn flagged_shot(rows: &[Assessment]) -> Option<Card> {
-    let pick = rows.iter().find(|row| row.recommended && row.shoot)?;
-    pick.action.strip_prefix("shoot, play ")?.parse().ok()
+/// The cards of the flagged moon shot among `rows`, if the pick is one
+fn flagged_shot(rows: &[Assessment]) -> Hand {
+    rows.iter()
+        .filter(|row| row.recommended && row.shoot)
+        .filter_map(|row| row.action.strip_prefix("shoot, play ")?.parse().ok())
+        .collect()
 }
 
 impl Strategy for HumanCli {
@@ -269,7 +272,8 @@ impl Strategy for HumanCli {
                     if view.legal_plays().contains(card) {
                         // A forced card neither starts nor breaks a plan.
                         if view.legal_plays().len() > 1 {
-                            self.hinter.set_moon_plan(self.shot.take() == Some(card));
+                            self.hinter.set_moon_plan(self.shot.contains(card));
+                            self.shot = Hand::EMPTY;
                         }
                         return card;
                     }
@@ -311,7 +315,7 @@ fn main() -> Result<()> {
     ];
     let mut human = HumanCli {
         hinter: MonteCarloBot::new(StdRng::seed_from_u64(seed.unwrap_or(0))).samples(128),
-        shot: None,
+        shot: Hand::EMPTY,
     };
     let rules = Rules::new();
     let mut game = hearts_engine::hearts::Game::new(rules);
@@ -326,6 +330,10 @@ fn main() -> Result<()> {
         println!();
         println!("=== Round {number} (pass {}) ===", game.next_direction());
         let mut table = Table::new(game.deal(&mut rng)).scores(game.scores());
+        // A plan is round-specific, and a forced opening play would carry
+        // it past the engine's own first-trick reset.
+        human.hinter.set_moon_plan(false);
+        human.shot = Hand::EMPTY;
 
         while let Some(seat) = table.turn() {
             // Once every point is in, the tally is frozen: offer to skip the

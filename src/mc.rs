@@ -504,7 +504,9 @@ impl<R: Rng> MonteCarloBot<R> {
         }
         // The live policy's own card, when it pre-empts the search, must be
         // a row to flag — collapsing or the cap may have dropped it.  A fully
-        // collapsed set already ties every play, the pinned one included.
+        // collapsed set already ties every play, the pinned one included, so
+        // it keeps only whether the pin is the carried shot.
+        let tied_shot = pinned.is_some_and(|(_, shoot)| shoot);
         let pinned = pinned
             .filter(|_| candidates.len() > 1)
             .map(|(card, shoot)| {
@@ -541,11 +543,15 @@ impl<R: Rng> MonteCarloBot<R> {
                 .legal_plays()
                 .into_iter()
                 .map(|card| Assessment {
-                    action: format!("play {card}"),
+                    action: if tied_shot {
+                        format!("shoot, play {card}")
+                    } else {
+                        format!("play {card}")
+                    },
                     equity,
                     ev,
                     recommended: true,
-                    shoot: false,
+                    shoot: tied_shot,
                 })
                 .collect();
         }
@@ -1820,19 +1826,13 @@ mod tests {
         assert!(player.shooting && hinter.shooting, "the plan survives");
     }
 
-    #[test]
-    fn a_laydown_moon_is_rolled_as_one() {
-        fn card(text: &str) -> Card {
-            text.parse().expect("a valid card")
-        }
-        fn hand(text: &str) -> Hand {
-            text.parse().expect("a valid hand")
-        }
-
-        // North holds the top of every suit but diamonds, and never loses
-        // the lead long enough for anyone to lead one.  East, void in
-        // spades, discards on every spade lead — a heart under the greedy
-        // policy, a diamond once the table knows it is defending a moon.
+    /// North holds the top of every suit but diamonds, and never loses the
+    /// lead long enough for anyone to lead one.  East, void in spades,
+    /// discards on every spade lead — a heart under the greedy policy, a
+    /// diamond once the table knows it is defending a moon.  The opening
+    /// clubs are in, North last to the deuce.
+    fn laydown_round() -> Round {
+        let hand = |text: &str| -> Hand { text.parse().expect("a valid hand") };
         let hands = [
             hand("QKA..QKA.29TJQKA"), // North: the monster, and the 2♠ ballast
             hand("2345.234567.234."), // East: holds the deuce, void in spades
@@ -1842,11 +1842,21 @@ mod tests {
         let mut round = Round::from_deal(Rules::new(), PassDirection::Hold, hands)
             .expect("a full partition deals");
         for (seat, text) in [(Seat::East, "2♣"), (Seat::South, "6♣"), (Seat::West, "T♣")] {
+            let card: Card = text.parse().expect("a valid card");
             round
-                .play(seat, card(text))
+                .play(seat, card)
                 .expect("a legal scripted play, North last to the deuce");
         }
+        round
+    }
 
+    #[test]
+    fn a_laydown_moon_is_rolled_as_one() {
+        fn card(text: &str) -> Card {
+            text.parse().expect("a valid card")
+        }
+
+        let round = laydown_round();
         let ace = Choice::Play(card("A♣"));
         let mut continuation = round.clone();
         assert_eq!(
@@ -1875,5 +1885,42 @@ mod tests {
         assert_eq!(next.view(Seat::North).legal_plays().len(), 1);
         next.step(&mut bot).expect("the forced 2♣ is legal");
         assert!(!bot.shooting, "a forced play clears last round's moon plan");
+    }
+
+    #[test]
+    fn a_collapsed_shot_keeps_its_flag() {
+        // Late in the laydown North's spades are one class, so the hint ties
+        // every legal play — and the ties must still read as the carried
+        // shot, or a frontend following one drops the plan.
+        let mut table = Table::new(laydown_round());
+        let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(3)).samples(64);
+        let mut greedy = HeuristicBot::new();
+        while table.round().tricks().len() < 9 || table.turn() != Some(Seat::North) {
+            let seat = table.turn().expect("the laydown runs past nine tricks");
+            if seat == Seat::North {
+                table.step(&mut bot)
+            } else {
+                table.step(&mut greedy)
+            }
+            .expect("no seat cheats");
+        }
+        let view = table.view(Seat::North);
+        assert!(
+            view.legal_plays().len() > 1,
+            "a tied choice, not a forced one"
+        );
+        let bot = || MonteCarloBot::new(StdRng::seed_from_u64(9)).samples(32);
+        let (mut player, mut hinter) = (bot(), bot());
+        player.set_moon_plan(true);
+        hinter.set_moon_plan(true);
+        let played = player.play_card(&view);
+        let rows = hinter.assess(&view);
+        assert_eq!(rows.len(), view.legal_plays().len(), "every play is tied");
+        assert!(rows.iter().all(|r| r.recommended && r.shoot));
+        assert!(
+            rows.iter()
+                .any(|r| r.action == format!("shoot, play {played}"))
+        );
+        assert!(hinter.shooting, "the plan survives");
     }
 }

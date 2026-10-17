@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   defense and a carried moon plan included, instead of the raw search pick;
   the terminal and web hints no longer advise ducking a trick the bot takes
   to break an opponent's moon.
+- When a carried moon plan leaves every legal play tied, `assess` now flags
+  each tied row as the shot instead of dropping `shoot`, so following any
+  of them keeps the terminal or web hint's plan.
+- The terminal and web hints drop a moon plan at each new deal; a forced
+  opening play no longer carries last round's plan into the next hint.
 
 ### Internal
 
