@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.1] — Unreleased
 
 ### Added
 
@@ -387,6 +387,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- `shoot_play` is gated on `rand` like `rollout_play`, its only non-test
+  caller, so `cargo check --no-default-features` builds without a
+  dead-code warning.
 - **Direction-conditioned passing is a null.**  `passing-opponent-model.md`'s
   P5 swept every pass knob one step each way, separately for left, right
   and across passes, at 200,000 games per arm.  No direction wants a knob

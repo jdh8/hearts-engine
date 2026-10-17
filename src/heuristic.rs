@@ -423,6 +423,7 @@ impl Strategy for HeuristicBot {
 /// to *win*, not discard.  On a trick we can no longer take, the shot needs
 /// nothing from us and [`greedy_play`] keeps the stopper it would have
 /// wasted.
+#[cfg(any(feature = "rand", test))]
 pub(crate) fn shoot_play(legal: Hand, trick: Trick, played: Hand) -> Card {
     let highest = |cards: Hand| {
         cards
