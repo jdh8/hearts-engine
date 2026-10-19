@@ -1,5 +1,5 @@
 @font-face {
-  font-family: "Source Han Suits";
+  font-family: "Libertinus Suits";
   font-weight: 1 1000;
   font-style: oblique -90deg 90deg;
   src: url("https://jdh8.github.io/fonts/suits.woff2") format("woff2");
@@ -29,7 +29,7 @@ body {
   min-height: 100vh;
   color: #f6f5ed;
   background: var(--felt);
-  font: 15px/1.4 "Source Han Suits", system-ui, sans-serif;
+  font: 15px/1.4 "Libertinus Suits", system-ui, sans-serif;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);
   grid-template-rows: auto minmax(0, 1fr);
