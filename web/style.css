@@ -3,6 +3,10 @@
   font-weight: 1 1000;
   font-style: oblique -90deg 90deg;
   src: url("https://jdh8.github.io/fonts/suits.woff2") format("woff2");
+  /* Only the four filled suits.  Lacking U+0020, this face is never the first
+     available font, so line boxes keep the fallback's metrics instead of
+     Libertinus's short ascent, which would hoist every baseline. */
+  unicode-range: U+2660, U+2663, U+2665-2666;
 }
 
 /* A deliberately plain kitchen-table look: deep felt, flat card faces, and a
@@ -214,7 +218,7 @@ main {
   width: var(--card-w);
   height: var(--card-h);
   margin: 0;
-  padding: 0.125rem 0.3rem 0.2rem 0.4rem; /* ink-balanced: rank and suit insets measured equal */
+  padding: 0.1875rem 0.35rem 0.35rem; /* centres the mean of rank and suit ink centroids vertically */
   flex: none;
   border: 0;
   border-radius: 6px;
@@ -232,7 +236,9 @@ main {
 .card.green { color: var(--green); }
 .card.blue { color: var(--blue); }
 .card .rank { align-self: flex-start; }
-.card .suit { align-self: flex-end; font-size: 1.2rem; }
+/* Libertinus draws suits only cap-high, hence the larger size; the tight line
+   box drops the slack the body leading would leave under the pip. */
+.card .suit { align-self: flex-end; font-size: 1.35rem; line-height: 1; }
 
 .card.back {
   border: 2px solid #fff;

@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of them keeps the terminal or web hint's plan.
 - The terminal and web hints drop a moon plan at each new deal; a forced
   opening play no longer carries last round's plan into the next hint.
+- The web front end's card faces are re-balanced for the Libertinus suit
+  font: suits are back to their former size, ranks no longer crowd the
+  top edge, and the suit font no longer shifts the baseline of other
+  text on the page.
 
 ### Internal
 
