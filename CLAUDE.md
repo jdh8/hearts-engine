@@ -87,7 +87,11 @@ what they removed:
   and asks `MonteCarloBot` through `Table::view`; its tests check the
   placeholder's view equals the real one at every decision.  Fuel is
   metered in wasm instructions, not time: measure with the kit's
-  `hearts-arena local` runner (`fuel_used` per event).
+  `hearts-arena local` runner (`fuel_used` per event), or bisect
+  `wasmtime run -W fuel=N` over a transcript's stdin — native replays
+  diverge, since `random_range` over `usize` differs on wasm32.  The
+  `Governor` prices worlds from measured worst costs; re-measure them
+  (the `bill` ratios on stderr) after any change to the search's cost.
 
 ## Invariants
 

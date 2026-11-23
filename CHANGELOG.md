@@ -67,6 +67,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   corners the void table cannot express — and asks the bot through
   `Table::view`.  At 128 worlds the worst decision measured 0.43×10⁹
   fuel against the arena's 2×10⁹ ceiling.
+- `arena/` sizes each decision from the fuel the arena reports: a world is
+  priced at the measured worst (4×10⁶ for a pass, 2.5×10⁵ plus 1.3×10⁵ per
+  trick left for a play) times a scale that rises after any dearer bill,
+  and the plan stays within half the decision's ceiling and of the hand's
+  pool after a floor for later decisions.  Over 64 held-out four-bot games
+  (31,496 decisions) the dearest decision used 64% of the ceiling, with no
+  forfeits.
 
 ## [0.1.1] — 2026-10-18
 

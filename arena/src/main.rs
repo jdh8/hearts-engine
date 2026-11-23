@@ -25,6 +25,40 @@ const ME: Seat = Seat::South;
 /// Salt that splits the placeholder's stream from the bot's own.
 const PLACEHOLDER_SALT: u64 = 0x9E37_79B9_7F4A_7C15;
 
+/// The share of a fuel allowance a decision plans to spend, leaving room
+/// for one twice as dear as the worst measured
+const FUEL_SHARE: f64 = 0.5;
+
+/// The worst fuel per world over 14,000 decisions in 32 four-bot games:
+/// a pass, and a play's fixed part and its part per trick left
+const PASS_PER_WORLD: f64 = 4.0e6;
+const PLAY_PER_WORLD: f64 = 2.5e5;
+const PLAY_PER_WORLD_PER_TRICK: f64 = 1.3e5;
+
+/// The fewest worlds a decision samples, however short of fuel
+const MIN_SAMPLES: u32 = 16;
+
+/// The most worlds a decision samples, however much fuel is left
+const MAX_SAMPLES: u32 = match option_env!("ARENA_MAX_SAMPLES") {
+    Some(_) => const_parse(option_env!("ARENA_MAX_SAMPLES")),
+    None => 1024,
+};
+
+const fn const_parse(digits: Option<&str>) -> u32 {
+    let bytes = match digits {
+        Some(digits) => digits.as_bytes(),
+        None => b"",
+    };
+    let mut n = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        assert!(bytes[i].is_ascii_digit(), "ARENA_MAX_SAMPLES is a count");
+        n = n * 10 + (bytes[i] - b'0') as u32;
+        i += 1;
+    }
+    n
+}
+
 /// The absolute seat `rel` places clockwise from us
 fn seat(rel: usize) -> Seat {
     (0..rel).fold(ME, |seat, _| seat.left())
@@ -233,9 +267,88 @@ fn place(
     true
 }
 
+/// The two kinds of decision, whose worlds cost differently
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Pass,
+    Play,
+}
+
+/// The measured worst fuel per world for a `kind` decision with
+/// `tricks_left` to roll out
+fn per_world(kind: Kind, tricks_left: u32) -> f64 {
+    match kind {
+        Kind::Pass => PASS_PER_WORLD,
+        Kind::Play => PLAY_PER_WORLD + PLAY_PER_WORLD_PER_TRICK * f64::from(tricks_left),
+    }
+}
+
+/// Plans each decision's world count from the fuel the arena reports
+///
+/// Fuel counts WebAssembly instructions and the clock is stopped, so the
+/// only meter is the pair of figures on each prompt.  The governor prices
+/// a world at [`per_world`] times a safety scale per kind, which starts at
+/// 1 and only rises: a decision's bill is how far the hand's pool fell by
+/// our next prompt, and one dearer than its price raises the scale to
+/// match.  The plan stays within [`FUEL_SHARE`] of the decision's ceiling
+/// and of the hand's pool, the latter after reserving [`MIN_SAMPLES`]
+/// full-hand worlds for every later decision.
+#[derive(Debug, Clone)]
+struct Governor {
+    /// Safety scale over [`per_world`], indexed by `Kind as usize`
+    scale: [f64; 2],
+    /// The decision awaiting its bill: its kind, its price at scale 1, and
+    /// the hand's pool at its prompt
+    pending: Option<(Kind, f64, u64)>,
+}
+
+impl Governor {
+    const fn new() -> Self {
+        Self {
+            scale: [1.0; 2],
+            pending: None,
+        }
+    }
+
+    /// A new hand refills the pool, so an unbilled decision stays unbilled.
+    const fn new_hand(&mut self) {
+        self.pending = None;
+    }
+
+    /// Bill the previous decision, then plan this one: how many worlds a
+    /// `kind` decision with `tricks_left` may sample with `decision` and
+    /// `hand` fuel left and `remaining` decisions in the hand, this one
+    /// included
+    fn plan(
+        &mut self,
+        kind: Kind,
+        tricks_left: u32,
+        decision: u64,
+        hand: u64,
+        remaining: u32,
+    ) -> u32 {
+        if let Some((previous, price, before)) = self.pending.take() {
+            let ratio = before.saturating_sub(hand) as f64 / price;
+            eprintln!("bill {previous:?} {ratio:.3}");
+            let scale = &mut self.scale[previous as usize];
+            *scale = scale.max(ratio);
+        }
+        let future = f64::from(remaining.saturating_sub(1) * MIN_SAMPLES);
+        let reserve = future * per_world(Kind::Play, 13) * self.scale[Kind::Play as usize];
+        let fuel = (decision as f64).min(hand as f64 - reserve) * FUEL_SHARE;
+        let price = per_world(kind, tricks_left);
+        let worlds = (fuel / (price * self.scale[kind as usize]))
+            .clamp(f64::from(MIN_SAMPLES), f64::from(MAX_SAMPLES)) as u32;
+        self.pending = Some((kind, price * f64::from(worlds), hand));
+        worlds
+    }
+}
+
 /// The arena seat: protocol state plus the bot
 struct ArenaBot {
-    bot: MonteCarloBot<StdRng>,
+    /// `None` only while a decision has it out to set its world count
+    bot: Option<MonteCarloBot<StdRng>>,
+    governor: Governor,
     rng: StdRng,
     /// Game totals, clockwise from us as the protocol sends them
     scores: [u16; 4],
@@ -244,10 +357,9 @@ struct ArenaBot {
 
 impl ArenaBot {
     fn new(seed: u64) -> Self {
-        let samples = option_env!("ARENA_SAMPLES")
-            .map_or(128, |n| n.parse().expect("ARENA_SAMPLES is a count"));
         Self {
-            bot: MonteCarloBot::new(StdRng::seed_from_u64(seed)).samples(samples),
+            bot: Some(MonteCarloBot::new(StdRng::seed_from_u64(seed))),
+            governor: Governor::new(),
             rng: StdRng::seed_from_u64(seed ^ PLACEHOLDER_SALT),
             scores: [0; 4],
             deal: Deal::new(PassDirection::Hold),
@@ -266,11 +378,40 @@ impl ArenaBot {
         Table::new(round).scores(scores)
     }
 
+    /// Size the bot for this prompt's fuel, then let `decide` consult it
+    fn decide<T>(
+        &mut self,
+        kind: Kind,
+        fuel: &[&str],
+        decide: impl FnOnce(&mut MonteCarloBot<StdRng>, &Table) -> T,
+    ) -> T {
+        let [decision, hand] = [0, 1].map(|i| fuel[i].parse().expect("a 64-bit fuel figure"));
+        let table = self.table();
+        let tricks_left = 13 - self.deal.plays.len() as u32 / 4;
+        let ours = self
+            .deal
+            .plays
+            .iter()
+            .filter(|&&(seat, _)| seat == ME)
+            .count() as u32;
+        let remaining = 13 - ours + u32::from(kind == Kind::Pass);
+        let worlds = self
+            .governor
+            .plan(kind, tricks_left, decision, hand, remaining);
+        let scale = self.governor.scale[kind as usize];
+        eprintln!("{kind:?}: {worlds} worlds, {tricks_left} tricks left, scale {scale:.2}");
+        let mut bot = self.bot.take().expect("the bot is home").samples(worlds);
+        let choice = decide(&mut bot, &table);
+        self.bot = Some(bot);
+        choice
+    }
+
     /// Absorb one arena line, returning our reply to a prompt
     fn hear(&mut self, words: &[&str]) -> Option<String> {
         match words {
             ["HAND", _, direction] => {
                 self.deal = Deal::new(direction.parse().expect("a pass direction"));
+                self.governor.new_hand();
             }
             ["CARDS", cards @ ..] => self.deal.dealt = parse_hand(cards),
             ["SCORES", scores @ ..] => {
@@ -283,16 +424,18 @@ impl ArenaBot {
                 let rel = rel.parse().expect("a seat");
                 self.deal.plays.push((seat(rel), parse_card(card)));
             }
-            ["PASS_REQUEST", ..] => {
-                let table = self.table();
-                let cards = self.bot.pass_cards(&table.view(ME));
+            ["PASS_REQUEST", fuel @ ..] => {
+                let cards = self.decide(Kind::Pass, fuel, |bot, table| {
+                    bot.pass_cards(&table.view(ME))
+                });
                 self.deal.passed = Some(cards.into_iter().collect());
                 let [a, b, c] = cards.map(code);
                 return Some(format!("PASS {a} {b} {c}"));
             }
-            ["YOUR_TURN", ..] => {
-                let table = self.table();
-                let card = self.bot.play_card(&table.view(ME));
+            ["YOUR_TURN", fuel @ ..] => {
+                let card = self.decide(Kind::Play, fuel, |bot, table| {
+                    bot.play_card(&table.view(ME))
+                });
                 self.deal.plays.push((ME, card));
                 return Some(format!("PLAY {}", code(card)));
             }
@@ -467,6 +610,71 @@ mod tests {
                 (Seat::North, "2D"),
                 (Seat::East, "2H"),
             ],
+        );
+    }
+
+    #[test]
+    fn a_full_pool_buys_the_ceiling_share() {
+        let mut governor = Governor::new();
+        // 0.5 × 2e9 over 4e6 for a pass, over 2.5e5 + 13 × 1.3e5 for a play
+        assert_eq!(
+            governor.plan(Kind::Pass, 13, 2_000_000_000, 10_000_000_000, 14),
+            250
+        );
+        governor.new_hand();
+        assert_eq!(
+            governor.plan(Kind::Play, 13, 2_000_000_000, 10_000_000_000, 13),
+            515
+        );
+        governor.new_hand();
+        assert_eq!(
+            governor.plan(Kind::Play, 3, 2_000_000_000, 10_000_000_000, 3),
+            1024
+        );
+    }
+
+    #[test]
+    fn a_dear_bill_raises_the_scale() {
+        let mut governor = Governor::new();
+        assert_eq!(
+            governor.plan(Kind::Play, 13, 2_000_000_000, 10_000_000_000, 13),
+            515
+        );
+        // Priced at 515 × 1.94e6 = 0.9991e9; billed twice that.
+        let next = governor.plan(Kind::Play, 13, 2_000_000_000, 8_001_800_000, 12);
+        assert_eq!(next, 257);
+        // A cheap bill never lowers it.
+        assert_eq!(
+            governor.plan(Kind::Play, 13, 2_000_000_000, 8_000_000_000, 11),
+            257
+        );
+    }
+
+    #[test]
+    fn a_new_hand_leaves_the_last_play_unbilled() {
+        let mut governor = Governor::new();
+        governor.plan(Kind::Play, 1, 2_000_000_000, 1_000_000_000, 1);
+        governor.new_hand();
+        assert_eq!(
+            governor.plan(Kind::Pass, 13, 2_000_000_000, 9_000_000_000, 14),
+            250
+        );
+        assert_eq!(governor.scale, [1.0; 2]);
+    }
+
+    #[test]
+    fn a_drained_pool_keeps_the_floor() {
+        let mut governor = Governor::new();
+        // 16 full-hand worlds for each of 9 later plays reserve 279e6.
+        assert_eq!(
+            governor.plan(Kind::Play, 4, 2_000_000_000, 250_000_000, 10),
+            16
+        );
+        // Priced at 16 × 7.7e5 = 12.32e6, billed 100e6: scale 8.12, so the
+        // last play buys 0.5 × 150e6 / (3.8e5 × 8.12) worlds.
+        assert_eq!(
+            governor.plan(Kind::Play, 1, 2_000_000_000, 150_000_000, 1),
+            24
         );
     }
 }
