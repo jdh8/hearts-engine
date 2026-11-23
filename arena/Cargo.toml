@@ -1,0 +1,23 @@
+[package]
+name = "hearts-arena-bot"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+publish = false
+license = "Apache-2.0"
+description = "MonteCarloBot behind the Hearts Bot Arena's stdin/stdout protocol, for wasm32-wasip1"
+
+# Standalone crate, like `web/`: an empty `[workspace]` keeps the parent
+# `hearts-engine` package from adopting it.
+[workspace]
+
+[dependencies]
+# Same `hearts` as the engine, so `Card` is one type across both crates.
+hearts = "0.1.1"
+hearts-engine = { path = ".." }
+rand = "0.10"
+
+[profile.release]
+# The arena meters WebAssembly instructions, so every inlined call is fuel saved.
+lto = true
+codegen-units = 1

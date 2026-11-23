@@ -81,6 +81,13 @@ what they removed:
   print `0.000±0.000` exactly; that is the harness's own self-check.
 - `web/` — nested crate with its own workspace; see `web/README.md` and
   the wasm traps below.
+- `arena/` — nested crate, the Hearts Bot Arena entry (`wasm32-wasip1`
+  binary).  Each prompt rebuilds a *placeholder* `Round` from the public
+  record (exhaustive placement under Hall's condition, never backtracks)
+  and asks `MonteCarloBot` through `Table::view`; its tests check the
+  placeholder's view equals the real one at every decision.  Fuel is
+  metered in wasm instructions, not time: measure with the kit's
+  `hearts-arena local` runner (`fuel_used` per event).
 
 ## Invariants
 

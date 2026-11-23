@@ -54,6 +54,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CSVs from the default and `parallel` builds; the unit test that claimed
   this but only checked within-build repeatability is renamed
   `seeded_pick_is_repeatable`.
+- New nested crate `arena/` (unpublished): `MonteCarloBot` behind the
+  Hearts Bot Arena's stdin/stdout protocol, built for `wasm32-wasip1`.  At
+  each prompt it deals a placeholder round consistent with the public
+  record — plays, our pass, voids, and the all-penalty and all-heart
+  corners the void table cannot express — and asks the bot through
+  `Table::view`.  At 128 worlds the worst decision measured 0.43×10⁹
+  fuel against the arena's 2×10⁹ ceiling.
 
 ## [0.1.1] — 2026-10-18
 
