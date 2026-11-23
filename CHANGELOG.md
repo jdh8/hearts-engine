@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `MonteCarloBot::win_only` pays a game-ending rollout for the win alone —
+  `1/k` for a k-way shared win, 0 for every other placement — instead of
+  its `3-2-1-0` matchpoints, for fields where only first place counts.
+  Off by default; the mid-game margin band is untouched.  The arena
+  example takes it as `mc:SAMPLES,win=true`, and the Hearts Bot Arena
+  entry (`arena/`), whose rating counts wins only, turns it on.
+  Measured at `mc:1024`, 2000 game blocks, seed 21, paired: `win`
+  +0.012±0.003 (+3.6 SE) against three `mc:128` and +0.017±0.003
+  (+5.3 SE) against three `greedy` — bought with `rank` −0.064±0.008
+  (−8.1 SE) and −0.014±0.005 (−2.7 SE), which is why it stays off
+  everywhere a placement other than first is worth something.
 - `Assessment::shoot` flags a moon-attempt row, and
   `MonteCarloBot::set_moon_plan` lets an assess-only hint bot carry a plan
   its seat chose.  The terminal and web hints use them: playing the flagged

@@ -114,6 +114,9 @@ what they removed:
   else `0.5 + margin/24`, a measured scale.  A lopsided round may leave
   `[0, 1]` and outrank a placement (a moon beats a sole win); do not
   re-pin it inside (¼, ¾) — `/112` did, and lost `rank` by 6 SE.
+  `MonteCarloBot::win_only` swaps the terminal payoff for `1/k` on a
+  k-way shared win and 0 otherwise (the arena's `win` column); only
+  `arena/` sets it, because that site rates wins alone.
   Player-facing surfaces show expected place, `4 − 3·equity` clamped to
   `[1, 4]`.
 - `Table::step` must leave the table untouched on `IllegalAction`.

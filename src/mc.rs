@@ -121,6 +121,9 @@ pub struct MonteCarloBot<R: Rng> {
     /// How many paired standard errors a challenger must clear in
     /// [`beats`] before the bot deviates from the greedy incumbent.
     gate: f64,
+    /// Whether a game-ending rollout pays the win alone rather than its
+    /// placement.
+    win_only: bool,
     /// The pass policy the search models with, in all three of its roles:
     /// the rollout opponents' passes, the observation reweight, and the
     /// bot's own candidate ranking.
@@ -175,6 +178,7 @@ impl<R: Rng> MonteCarloBot<R> {
             rng,
             samples: 128,
             gate: 1.5,
+            win_only: false,
             pass_model: HeuristicConfig::new(),
             shooting: false,
             moon_attempts: 0,
@@ -205,6 +209,22 @@ impl<R: Rng> MonteCarloBot<R> {
     #[must_use]
     pub const fn gate(mut self, gate: f64) -> Self {
         self.gate = gate;
+        self
+    }
+
+    /// Pay a game-ending rollout for the win alone
+    ///
+    /// By default a rollout that ends the game pays its `3-2-1-0`
+    /// matchpoints, so the bot keeps fighting for second once first is
+    /// gone.  Where only first place counts — a rating that scores wins and
+    /// nothing else — that fight is wasted: with this set, a finished game
+    /// pays `1/k` for a k-way shared win and 0 for every other placement,
+    /// and the bot takes the win-or-last gambles a placement player
+    /// declines.  [`Assessment::equity`] is then no longer an expected
+    /// finishing place.
+    #[must_use]
+    pub const fn win_only(mut self, win_only: bool) -> Self {
+        self.win_only = win_only;
         self
     }
 
@@ -487,6 +507,7 @@ impl<R: Rng> MonteCarloBot<R> {
                 &worlds,
                 candidates,
                 self.gate,
+                self.win_only,
                 &mut scored,
                 &mut alive,
             );
@@ -836,6 +857,7 @@ fn score_worlds(
     worlds: &[Round],
     candidates: &[Candidate],
     gate: f64,
+    win_only: bool,
     scored: &mut [Scored],
     alive: &mut Vec<usize>,
 ) {
@@ -848,7 +870,7 @@ fn score_worlds(
         let moon = u32::from(result.shooter() == Some(me));
         let scores = result.scores(rules);
         (
-            equity(&scores, me, standing, rules),
+            equity(&scores, me, standing, rules, win_only),
             f64::from(scores[me as usize]),
             moon,
         )
@@ -1004,7 +1026,10 @@ fn absolute_standing(me: Seat, relative: [u16; 4]) -> [u16; 4] {
 /// `/28` level and both `/14` and `/40` worse.  A score-aware alternative
 /// (each opponent beaten with logistic probability in the post-round total
 /// gap) tied `/24` on `rank`.
-fn equity(scores: &[u16; 4], me: Seat, standing: [u16; 4], rules: &Rules) -> f64 {
+///
+/// With `win_only`, a finished game instead pays `1/k` for a k-way shared
+/// win and 0 for every other placement.
+fn equity(scores: &[u16; 4], me: Seat, standing: [u16; 4], rules: &Rules, win_only: bool) -> f64 {
     let mut totals = standing;
     for seat in Seat::ALL {
         let total = &mut totals[seat as usize];
@@ -1014,6 +1039,11 @@ fn equity(scores: &[u16; 4], me: Seat, standing: [u16; 4], rules: &Rules) -> f64
         // Twice the 3-2-1-0 matchpoints stays an integer through the tie
         // average; `ahead + share ≤ 4` bounds the subtraction at 6.
         let mine = totals[me as usize];
+        if win_only {
+            let min = *totals.iter().min().expect("four totals");
+            let share = totals.iter().filter(|&&total| total == min).count();
+            return if mine == min { 1.0 / share as f64 } else { 0.0 };
+        }
         let ahead = totals.iter().filter(|&&total| total < mine).count();
         let share = totals.iter().filter(|&&total| total == mine).count();
         return (6 - 2 * ahead - (share - 1)) as f64 / 6.0;
@@ -1321,24 +1351,33 @@ mod tests {
         let rules = Rules::new();
         let me = Seat::North;
         // North ends lowest when West crosses: a sole win.
-        let win = equity(&[0, 10, 10, 6], me, [50, 60, 70, 95], &rules);
+        let win = equity(&[0, 10, 10, 6], me, [50, 60, 70, 95], &rules, false);
         assert_eq!(win, 1.0);
         // North crosses alone: a sole last.
-        let loss = equity(&[13, 13, 0, 0], me, [95, 0, 0, 0], &rules);
+        let loss = equity(&[13, 13, 0, 0], me, [95, 0, 0, 0], &rules, false);
         assert_eq!(loss, 0.0);
         // The middle placements pay their matchpoints over three.
-        let second = equity(&[0, 0, 13, 13], me, [50, 40, 60, 95], &rules);
+        let second = equity(&[0, 0, 13, 13], me, [50, 40, 60, 95], &rules, false);
         assert_eq!(second, 2.0 / 3.0);
-        let third = equity(&[0, 0, 13, 13], me, [50, 40, 30, 95], &rules);
+        let third = equity(&[0, 0, 13, 13], me, [50, 40, 30, 95], &rules, false);
         assert_eq!(third, 1.0 / 3.0);
         // Ties average: two crowns share 2½ matchpoints, four share 1½.
-        let crowns = equity(&[0, 0, 13, 13], me, [50, 50, 60, 95], &rules);
+        let crowns = equity(&[0, 0, 13, 13], me, [50, 50, 60, 95], &rules, false);
         assert_eq!(crowns, 5.0 / 6.0);
-        let level = equity(&[13, 7, 3, 3], me, [87, 93, 97, 97], &rules);
+        let level = equity(&[13, 7, 3, 3], me, [87, 93, 97, 97], &rules, false);
         assert_eq!(level, 0.5);
         // Exactly the target ends the game; one point short stays a round.
-        assert_eq!(equity(&[13, 13, 0, 0], me, [87, 0, 0, 0], &rules), 0.0);
-        let running = equity(&[13, 13, 0, 0], me, [86, 0, 0, 0], &rules);
+        assert_eq!(
+            equity(&[13, 13, 0, 0], me, [87, 0, 0, 0], &rules, false),
+            0.0
+        );
+        let running = equity(&[13, 13, 0, 0], me, [86, 0, 0, 0], &rules, false);
+        // Win-only: second place is worth what last is, a shared crown 1/k.
+        let win_only = |scores, standing| equity(scores, me, standing, &rules, true);
+        assert_eq!(win_only(&[0, 10, 10, 6], [50, 60, 70, 95]), 1.0);
+        assert_eq!(win_only(&[0, 0, 13, 13], [50, 40, 60, 95]), 0.0);
+        assert_eq!(win_only(&[0, 0, 13, 13], [50, 50, 60, 95]), 0.5);
+        assert_eq!(win_only(&[13, 7, 3, 3], [87, 93, 97, 97]), 0.25);
         assert!(running > 0.0, "{running} is mid-game");
     }
 
@@ -1347,10 +1386,10 @@ mod tests {
         let rules = Rules::new();
         let me = Seat::North;
         let level = [0u16; 4];
-        let clean = equity(&[0, 13, 13, 0], me, level, &rules);
-        let queen = equity(&[13, 13, 0, 0], me, level, &rules);
-        let moon = equity(&[0, 26, 26, 26], me, level, &rules);
-        let mooned = equity(&[26, 0, 26, 26], me, level, &rules);
+        let clean = equity(&[0, 13, 13, 0], me, level, &rules, false);
+        let queen = equity(&[13, 13, 0, 0], me, level, &rules, false);
+        let moon = equity(&[0, 26, 26, 26], me, level, &rules, false);
+        let mooned = equity(&[26, 0, 26, 26], me, level, &rules, false);
         assert!(moon > clean && clean > queen);
         // Relative to the field, eating the queen and being mooned cost
         // the same 8⅔-point margin — the measure is zero-sum on purpose.

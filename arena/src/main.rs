@@ -358,7 +358,9 @@ struct ArenaBot {
 impl ArenaBot {
     fn new(seed: u64) -> Self {
         Self {
-            bot: Some(MonteCarloBot::new(StdRng::seed_from_u64(seed))),
+            // The arena rates wins and nothing else, so second is worth
+            // what last is.
+            bot: Some(MonteCarloBot::new(StdRng::seed_from_u64(seed)).win_only(true)),
             governor: Governor::new(),
             rng: StdRng::seed_from_u64(seed ^ PLACEHOLDER_SALT),
             scores: [0; 4],
