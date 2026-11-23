@@ -291,16 +291,55 @@ impl<R: Rng> MonteCarloBot<R> {
             cards.swap(i, j);
         }
         let allowed = |card: Card, seat: Seat| seat != me && !view.is_void(seat, card.suit);
-        cards.sort_by_key(|&card| Seat::ALL.iter().filter(|&&s| allowed(card, s)).count());
+        // Bit `seat as usize` of a card's mask: the seats that may take it.
+        let mask = |card: Card| {
+            Seat::ALL
+                .into_iter()
+                .filter(|&seat| allowed(card, seat))
+                .fold(0usize, |mask, seat| mask | 1 << seat as usize)
+        };
+        cards.sort_by_key(|&card| mask(card).count_ones());
+        let masks: Vec<usize> = cards.iter().map(|&card| mask(card)).collect();
+        let mut pending = [0usize; 16];
+        for &mask in &masks {
+            pending[mask] += 1;
+        }
+
+        /// Hall's condition for the cards still to place: every set of
+        /// seats has room for the cards that may go nowhere else.  With as
+        /// many cards as room in total, a placement exists exactly when it
+        /// holds, so checking it before each step means a dead end is never
+        /// entered — under voids that pin a whole suit to one seat, blind
+        /// backtracking would search exponentially many before finding out.
+        /// The worlds drawn are distributed as before: blind search also
+        /// takes, card by card, the first seat in its random order that
+        /// still admits a completion.
+        fn feasible(pending: &[usize; 16], room: &[usize; 4]) -> bool {
+            pending[0] == 0
+                && (1..16).all(|seats: usize| {
+                    let space: usize = (0..4)
+                        .filter(|&s| seats >> s & 1 != 0)
+                        .map(|s| room[s])
+                        .sum();
+                    let confined: usize = (1..16)
+                        .filter(|&m| m & !seats == 0)
+                        .map(|m| pending[m])
+                        .sum();
+                    confined <= space
+                })
+        }
 
         fn place(
             cards: &[Card],
-            allowed: &impl Fn(Card, Seat) -> bool,
+            masks: &[usize],
+            pending: &mut [usize; 16],
             hands: &mut [Hand; 4],
             room: &mut [usize; 4],
             rng: &mut (impl Rng + ?Sized),
         ) -> bool {
-            let Some((&card, rest)) = cards.split_first() else {
+            let (Some((&card, cards)), Some((&mask, masks))) =
+                (cards.split_first(), masks.split_first())
+            else {
                 return true;
             };
             let mut order = Seat::ALL;
@@ -308,21 +347,35 @@ impl<R: Rng> MonteCarloBot<R> {
                 let j = rng.random_range(0..=i);
                 order.swap(i, j);
             }
+            pending[mask] -= 1;
             for seat in order {
-                if room[seat as usize] > 0 && allowed(card, seat) {
-                    room[seat as usize] -= 1;
-                    hands[seat as usize].insert(card);
-                    if place(rest, allowed, hands, room, rng) {
-                        return true;
+                let s = seat as usize;
+                if room[s] > 0 && mask >> s & 1 != 0 {
+                    room[s] -= 1;
+                    if feasible(pending, room) {
+                        hands[s].insert(card);
+                        if place(cards, masks, pending, hands, room, rng) {
+                            return true;
+                        }
+                        hands[s].remove(card);
                     }
-                    hands[seat as usize].remove(card);
-                    room[seat as usize] += 1;
+                    room[s] += 1;
                 }
             }
+            pending[mask] += 1;
             false
         }
 
-        if !place(&cards, &allowed, &mut hands, &mut room, &mut self.rng) {
+        if !feasible(&pending, &room)
+            || !place(
+                &cards,
+                &masks,
+                &mut pending,
+                &mut hands,
+                &mut room,
+                &mut self.rng,
+            )
+        {
             return None;
         }
 
@@ -1072,6 +1125,53 @@ mod tests {
                 let known = view.known_cards(seat);
                 assert_eq!(hand & known, known);
             }
+        }
+    }
+
+    /// West has shown out of diamonds and spades, and every unseen heart is
+    /// South's, so West's eight cards must be the eight unseen clubs.
+    /// North may hold clubs too, and East has shown out of them — so clubs
+    /// tie the other suits at two possible seats, and the
+    /// most-constrained-first order interleaves them at random.
+    /// Blind backtracking that strays a club to North learns so only at the
+    /// bottom of an exponential search; Hall pruning never strays.
+    #[test]
+    fn a_suit_pinned_by_voids_samples_without_search() {
+        let cards = |codes: &str| -> Hand {
+            codes
+                .split_whitespace()
+                .map(|code| code.parse::<Card>().expect("a card"))
+                .collect()
+        };
+        let hands = [
+            "2C 3D 4D 5D 6D 7D 8D 9D 2S 3S 4S 5S AS",
+            "TD JD QD KD AD 6S 7S 8S 9S TS JS KS 3H",
+            "AC QS 4H 5H 6H 7H 8H 9H TH JH QH KH AH",
+            "3C 4C 5C 6C 7C 8C 9C TC JC QC KC 2D 2H",
+        ]
+        .map(cards);
+        let mut round = Round::from_deal(Rules::new(), PassDirection::Hold, hands).unwrap();
+        let plays =
+            "N2C ETD SAC W3C SQS W4C NAS E6S N3D EJD S4H W2D EQD S5H W5C N4D E3H S6H W2H N5D";
+        for play in plays.split_whitespace() {
+            let (seat, card) = play.split_at(1);
+            round
+                .play(seat.parse().unwrap(), card.parse().unwrap())
+                .unwrap();
+        }
+        let table = Table::new(round);
+        let view = table.view(Seat::South);
+        assert_eq!(view.turn(), Some(Seat::South));
+        assert!(view.is_void(Seat::West, Suit::Diamonds) && view.is_void(Seat::West, Suit::Spades));
+        assert!(view.is_void(Seat::East, Suit::Clubs));
+
+        let clubs = cards("6C 7C 8C 9C TC JC QC KC");
+        let mut bot = MonteCarloBot::new(StdRng::seed_from_u64(1));
+        for _ in 0..200 {
+            let hands = bot
+                .sample_hands(&view)
+                .expect("the true deal is consistent");
+            assert_eq!(hands[Seat::West as usize], clubs);
         }
     }
 

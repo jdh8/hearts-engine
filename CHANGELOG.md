@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `MonteCarloBot`'s world sampler no longer searches exponentially when
+  shown voids pin a whole suit to one seat while another seat may still
+  hold it: it checks Hall's condition before placing each card, so it
+  never enters a dead end.  Worlds are drawn from the same distribution
+  (seeded play changes only through the random stream).  One such arena
+  decision fell from 8.3×10⁹ to 0.31×10⁹ WebAssembly instructions.
 - `MonteCarloBot` no longer carries a completed moon plan into the next
   round when its first play there is forced: the plan reset now runs before
   the forced-card and moon-defense early returns.
