@@ -148,6 +148,15 @@ check --all-features --all-targets`, then restore `Cargo.lock` (it is
 committed).  The strength tripwire is manual:
 `cargo test --release --test strength -- --ignored`.
 
+## Heavy arena runs
+
+Queue them: `scripts/queue-ab.sh SLUG ARENA-ARGS...` freezes the checkout
+(dirty files included) into a worktree under `~/ab/` and queues the arena
+example there; pueue runs one task at a time and the result lands in
+`ab-results/SLUG.txt`.  `pueue status` is the index of what is in flight.
+Never launch a heavy run beside the queue, and remove the worktree once
+the verdict is read.
+
 ## After updating the codebase
 
 - Format with `cargo fmt`; run the gate above.

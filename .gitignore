@@ -20,3 +20,6 @@
 # Claude and AI context
 /.claude/*
 !/.claude/skills/
+
+# Queued arena results (scripts/queue-ab.sh)
+/ab-results

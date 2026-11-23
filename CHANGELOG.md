@@ -51,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- `scripts/queue-ab.sh` queues an arena run through pueue against a
+  frozen worktree snapshot of the checkout, adapted from pons; results
+  land in the ignored `ab-results/`.
 - Measure the world-count lever past 256 for the arena entry
   (docs/ordinary-play.md, S3 addendum): over 16,000 paired blocks against
   the greedy field, `rank` flattens at 512 worlds (`mc:512 − mc:128`
