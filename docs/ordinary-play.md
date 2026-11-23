@@ -290,6 +290,28 @@ nothing can be reallocated.  The real lesson is the pooled size: at
 fixed wall-clock, compute is a weak lever for this campaign, and the
 rollout policy is the stronger one.
 
+**Addendum (2026-11-23): the lever past 256.**  The Hearts Bot Arena
+entry (`arena/`) meters fuel per decision, not wall time, and its
+Governor can afford about 250 worlds on a pass and 515→1024 on plays —
+so the question became whether worlds past 256 still pay.  Three arms
+against plain `mc:128`, each paired over the same 16,000 seed-4 blocks
+in the greedy field, at commit 0b97a4e:
+
+| Arm | `points` | `win` | `rank` | `moons` |
+| --- | --- | --- | --- | --- |
+| `mc:256` | +0.076 ± 0.027 | +0.0037 ± 0.0012 (3.1 SE) | +0.0088 ± 0.0028 (3.2 SE) | +0.0006 ± 0.0006 |
+| `mc:512` | +0.115 ± 0.028 | +0.0051 ± 0.0013 (4.1 SE) | +0.0132 ± 0.0029 (4.5 SE) | +0.0011 ± 0.0006 |
+| `mc:1024` | +0.110 ± 0.029 | +0.0067 ± 0.0013 (5.2 SE) | +0.0133 ± 0.0029 (4.5 SE) | +0.0016 ± 0.0006 |
+
+`rank` and `points` flatten at 512 (the 512→1024 step is +0.0001 rank,
+−0.004 points); `win` keeps creeping (512→1024 is +0.0016 ± 0.0013,
+1.2 SE, not resolved).  The `mc:256` arm reproduces the S3 prior.  So
+the Governor's 1024 cap is on the flat part of the curve: a 512 cap
+would keep essentially all of the measured strength for half the
+fuel on plays, and anything the arena's fuel can buy past that is
+within noise.  Caveat: fixed-N native instrument, greedy field — not
+the wasm per-decision schedule and not the arena's strong field.
+
 ### P1 — keep a high spade guarded
 
 One arena leg, a one-condition change in `greedy_play`, knowledge-free so

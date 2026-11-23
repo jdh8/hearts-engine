@@ -51,6 +51,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Measure the world-count lever past 256 for the arena entry
+  (docs/ordinary-play.md, S3 addendum): over 16,000 paired blocks against
+  the greedy field, `rank` flattens at 512 worlds (`mc:512 − mc:128`
+  `+0.013 ± 0.003`, `mc:1024` adds `+0.0001`); `win` still creeps by
+  1.2 SE at 1024.  The arena Governor's 1024 cap sits on the flat part.
 - Document the [improvement review](docs/improvement-review.md): reproduced
   moon-plan state leaking across rounds and hints bypassing moon defense,
   identified the serial/parallel equivalence test gap, and scoped a
