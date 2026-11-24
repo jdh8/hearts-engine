@@ -62,6 +62,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Open the [Hearts Bot Arena campaign](docs/arena-gap.md).  Over the
+  5,464 games `rusty-hearts` v2 has played there, ordinary play is sound
+  (6.03 points per moonless hand, fourth-best of twelve rated bots) and
+  the gap is moons: it completes one on 1.50% of hands against 2.4–7.4%
+  for the field, and the seat it passes to shoots 1.17 times as often as
+  the other two opponents, the worst ratio on the board.
+- `scripts/arena-census.py` replays the bot's public arena transcripts
+  through the wasm to count the moon shots it starts, which the site does
+  not record; `arena/` prints a `shoot` line on stderr for it to read.
+  Over the first 185 games it starts a shot on 6.4% of hands and lands
+  22.9% of them, where the local fields let about 70% through.
 - `scripts/queue-ab.sh` queues an arena run through pueue against a
   frozen worktree snapshot of the checkout, adapted from pons; results
   land in the ignored `ab-results/`.

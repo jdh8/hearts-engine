@@ -1,0 +1,273 @@
+# The Hearts Bot Arena gap — moons against a field that shoots
+
+**Status: OPEN (2026-11-25).**  `rusty-hearts` v2 (commit `309faf6`,
+`mc` capped at 1024 worlds, win-only payoff) sits 11th of 18 at 2327,
+85–110 points under a pack at 2410–2440 and about 200 under the top two.
+The site's own game records say the gap is moons: we complete
+a third as many as the field, and the seat we pass to shoots more often
+than it does behind anyone else's pass.  Ordinary card play is not the
+problem.  P0 (an attempt census) is built and measured, and adds a third
+finding larger than either: we start a shot on 6.4% of hands and land
+fewer than one in four.  P1 (the anti-feed pass, re-priced against a
+field that shoots) is queued.  Siblings:
+[cfr-gap.md](cfr-gap.md), whose closed proposals this doc re-reads under
+a different gate, and [passing-shape.md](passing-shape.md).
+
+## Goal and non-goals
+
+**Goal.**  Win more games on the site.  Its rating counts wins only —
+2nd, 3rd and 4th are one result — so the gate here is the arena example's
+`win` column, not `rank`.  That is the one licence this campaign has to
+reopen anything [cfr-gap.md](cfr-gap.md) closed: several of its
+proposals died on `rank` with `win` flat or ahead.
+
+**Non-goals.**  Nothing here changes the default engine.  `rank` stays
+the gate for everything a library user gets; a change that wins on `win`
+alone ships behind `MonteCarloBot::win_only` or in `arena/`, the way the
+win-only payoff did.  No modeling of other authors' bots beyond what
+their public games show.
+
+## The record
+
+All 11,070 games stored between our first (40881) and 51947, pulled
+2026-11-24 from the public `GET /api/games/export`; 5,464 are v2.  Tables
+with a house bot are left out of every comparison.  Each game carries all
+four hands, every pass and every play, so the numbers below are counts,
+not estimates.
+
+Moons are the ecology: about 15% of passing hands and 8% of hold hands
+end in one.
+
+| bot | win % | pts / plain hand | shoots, % of hands | shot at, % of hands | recipient ÷ other |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Ava v3 | 35.9 | 5.11 | 3.69 | 10.28 | 1.12 |
+| Wren v5 | 31.7 | 7.11 | 4.71 | 9.17 | 0.82 |
+| Nightjar v1 | 28.0 | 7.05 | 3.24 | 8.81 | 0.98 |
+| Moonwarden v4 | 27.6 | 8.78 | 7.35 | 8.65 | 0.63 |
+| Killer-Hearts v3 | 27.6 | 6.66 | 3.81 | 8.46 | 0.96 |
+| Brooke v2 | 25.2 | 5.48 | 2.51 | 11.58 | 1.03 |
+| DEEP-CFR-JR v1 | 24.8 | 6.68 | 5.33 | 10.23 | 0.94 |
+| Cleo v2 | 23.8 | 5.76 | 2.43 | 9.77 | 0.91 |
+| Tafuta v1 | 23.1 | 6.52 | 3.58 | 10.75 | 1.03 |
+| **RUSTY-HEARTS v2** | **21.9** | **6.03** | **1.50** | **11.60** | **1.17** |
+| Kivuli v3 | 21.8 | 6.47 | 3.50 | 9.36 | 0.95 |
+| Chui v1 | 18.6 | 7.44 | 3.44 | 7.81 | 1.03 |
+
+"Plain hand" is one nobody mooned.  "Recipient ÷ other" is how often the
+seat that received this bot's pass completed a moon, over the rate of
+each of the other two opponents on the same hands.
+
+**Ordinary play is fine.**  Fourth-lowest points on plain hands and the
+highest share of zero-point hands (33.5%).
+
+**We do not complete moons.**  1.50% of hands against 2.4–7.4% for every
+other rated bot.  The same build completes about 5.6% of rounds against
+our local `mc:128` and `greedy` fields, so the local fields flatter the
+shot by a factor of nearly four.  P0 says where the difference goes: we
+try, and fail.
+
+**Moons against us decide our games.**  v2 wins 38.4% of games with no
+moon against it, 21.7% with one, 9.8% with two, 1.4% with three or more;
+73.6% of its games have at least one.
+
+**The leak is the pass.**  The recipient of our pass shoots 1.17 times as
+often as the other two opponents — the worst ratio on the board, in all
+three directions (left 5.07 vs 4.15/4.12 per 100 hands, right 4.62 vs
+4.28/4.04, across 4.67 vs 4.17/3.82).  What we pass explains it:
+
+| passer | aces | A/K/Q | low ♥ (2–9) | 2–6 any suit |
+| --- | ---: | ---: | ---: | ---: |
+| **RUSTY-HEARTS v2** | **0.71** | **1.92** | **0.14** | **0.22** |
+| Nightjar v1 | 0.60 | 1.70 | 0.10 | 0.32 |
+| Tafuta v1 | 0.47 | 1.43 | 0.33 | 0.42 |
+| Killer-Hearts v3 | 0.43 | 1.31 | 0.39 | 0.55 |
+| Ava v3 | 0.37 | 1.22 | 0.31 | 0.43 |
+| Wren v5 | 0.40 | 1.11 | 0.30 | 0.62 |
+| Moonwarden v4 | 0.22 | 0.78 | 0.56 | 1.00 |
+
+Cards per three-card pass.  We hand over more top cards than anyone and
+fewer low ones, which is `pass_score` doing what it says: base rank.  The
+recipient's moon rate climbs with the aces and kings in a pass (ours:
+3.4%, 4.9%, 5.7%, 6.4% for zero to three; everyone else's: 2.4%, 3.6%,
+4.5%, 5.1%) and halves when the pass holds a low heart (ours 5.4% → 2.6%;
+others' 3.9% → 1.8%).
+
+**It is not late defence.**  Counting moons in which a seat ducked a
+trick it could have won after the shooter already held 13 or more points
+and every point taken: we did so in 0.6% of the moons against us, the
+best on the board (others 4.5–11.3%).
+
+**We close worse.**  Entering the final hand with the lowest score we win
+77.7% (Ava 83.2, Nightjar 86.1, Moonwarden 88.8); from second, 9.0%
+(Killer-Hearts 13.4, Wren 19.8, Moonwarden 22.5).
+
+## Priors this doc re-reads
+
+Every row of [cfr-gap.md](cfr-gap.md)'s priors table stands as measured.
+What changes is the question asked of four of them.
+
+| Prior | Its verdict | Why it is open here |
+| --- | --- | --- |
+| anti-moon pass penalty (P4) | `rank −0.0165 ± 0.0053`, `win −0.0036 ± 0.0023` at confirm | priced against three `greedy`, which rarely shoot — its own text says the stage "could price only the ordinary-play cost".  The benefit side is now measured on the site. |
+| decision-conditional moon bar (P2) | `rank +0.0000 ± 0.0026`, `win +0.0056 ± 0.0010` | failed `rank` only; `win` was +5.6 SE.  But see P0 before lowering any bar. |
+| flat 45% majority bar | `win` +1.6 SE, `rank` flat | same |
+| opponent-moon rollout model | `rank −0.0256 ± 0.0073` vs greedy | "worlds must not out-inform the field" — true of a field that does not shoot.  This one does. |
+
+The win-only payoff itself is the precedent: `win +3.6/+5.3 SE` bought
+with `rank −8.1/−2.7 SE`, shipped for this site alone, worth about +7
+rating (2320 → 2327).
+
+## Instruments
+
+- **Site games** — the export above.  Free, exact, and the only
+  measurement of the real field; it sees outcomes, not our intentions.
+- **`scripts/arena-census.py`** — replays our seat's public transcript
+  through the arena wasm and reads the `shoot` line `arena/` now prints on
+  stderr.  The wasm is deterministic in the `INIT` seed and the fuel
+  figures on each prompt, and a replay whose replies differ from the
+  transcript is dropped.  About 1.5 CPU-seconds a game.
+- **The `mc:128` field** — unlike `greedy`, it shoots (about 5.5% of
+  rounds a seat), so it can price a pass that feeds a shooter.  It is
+  still a far softer defence than the site's.
+- **Practice games** (`POST /api/practice`, needs the API key) — seat a
+  draft against other authors' live bots at a chosen seed.  The only
+  paired A/B against the real field, and it runs on someone else's server:
+  ask the site's owner before scripting more than a handful, and use it
+  for moon counts (hundreds of games), not `win` (thousands).
+
+## Proposals
+
+| # | Proposal | Touches | State |
+| --- | --- | --- | --- |
+| P0 | attempt census on site games | `arena/` stderr + a script | measured on 185 games |
+| P1 | anti-feed pass, priced against shooters | pass policy | queued |
+| P2 | the moon bar against real defenders | selection rule | next; calibration step unbuilt |
+| P3 | closing the last hand | win-only payoff | unbuilt |
+| P4 | paired practice games | instrument | needs the owner's leave |
+
+### P0 — attempt census
+
+**Status: MEASURED (2026-11-25), on the first 185 games; the rest of a
+1,500-game sample is still downloading.**
+
+The 185 most recent v2 games, 1,851 hands, replayed with no divergence:
+
+| | count | rate |
+| --- | ---: | ---: |
+| hands with a shot started in play | 118 | 6.4% of hands |
+| … completed | 27 | 22.9% of shots |
+| … failed | 91 | mean 19.0 points taken |
+| shoot passes chosen | 53 | 2.9% of hands |
+| … ending in our moon | 12 | 22.6% of shoot passes |
+| moons completed with no shot logged | 3 | |
+
+We do shoot — as often as the board's keenest shooters complete — and
+fewer than one shot in four lands.  The strict-majority bar admits a shot
+only when it completes in more than half of the sampled worlds, and the
+same build completes about 70% of its attempts against the local fields,
+so the rollouts' defenders are far softer than the site's.  Shots started
+on the first three tricks are the worst: 12 of 74 (16%).
+
+The cost is large.  A completed moon is a 26-point swing on each
+opponent; a failed shot leaves us about 19 points against 6 on an
+ordinary hand.  At 22.9% the average shot loses about 7 points of margin
+against simply playing the hand, on 6.4% of hands — roughly half a point
+a hand, four to five points a game.  Break-even in points is near 40%
+completion.  This, not timidity, is why our moon count is the lowest on
+the board, and it is the largest single leak this doc has found.
+
+```console
+scripts/arena-census.py fetch  ab-results/arena-census --limit 1500
+scripts/arena-census.py replay ab-results/arena-census ab-results/arena-census/bot.wasm
+```
+
+### P1 — anti-feed pass, priced against shooters
+
+The mechanism is cfr-gap P4's, rebuilt as an experimental knob:
+`HeuristicConfig::feed_penalty` (doc-hidden, default 0; arena spec
+`feed=N`) subtracts from `pass_score` for any queen, king or ace and for
+T♥/J♥.  The spade tiers (+100/+90/+80) still move an unguarded Q♠ and her
+catchers at any weight tried, and the shoot-pass ballast is ranked with
+the penalty off so a shooter keeps its controls.  Through `pass_model` it
+also reaches the rollout opponents' passes and the incoming-pass
+likelihood, as P4's did.
+
+What is new is the field and the gate.  Queued 2026-11-25, 2,000 games,
+seed 21, paired, against three `mc:128`:
+
+```console
+scripts/queue-ab.sh feed7-mcfield --games 2000 --seed 21 \
+    --ab mc:1024,win=true,feed=7 mc:1024,win=true mc:128 mc:128 mc:128
+scripts/queue-ab.sh feed4-mcfield --games 2000 --seed 21 \
+    --ab mc:1024,win=true,feed=4 mc:1024,win=true mc:128 mc:128 mc:128
+```
+
+Weight 7 is P4's retention knee (it kept 54% of the cards CFR was fed);
+4 is a milder arm in case 7 pays too much ordinary play.
+
+**Gate.**  `win ≥ +2 SE` at either weight advances the better one to a
+fresh-seed confirmation of 6,000 games, with a greedy-field leg that must
+hold `win ≥ −2 SE`.  A confirmed arm ships in `arena/` only, with the
+knob made permanent and documented.  Anything less: delete the knob, the
+ballast split and the arena key, and record the null here.
+
+**Known weakness.**  The arena prints the challenger's own `moons`, not
+the moons completed against it, so a null cannot say whether the pass
+failed to starve the `mc:128` shooters or starved them at too high a
+price.  If the screen is within ±1 SE, add that column before deciding.
+
+**Not tried yet.**  The site data points at a second, cheaper rule — put
+one low heart in the pass — which halves the recipient's moon rate for
+every bot on the board.  It is a different mechanism from a penalty on
+top cards and gets its own arm only if P1's knob shows the field can
+price feeding at all.
+
+### P2 — the moon bar against real defenders
+
+P0 turns the inherited question around.  cfr-gap's P2 and the 45% bar
+asked whether to shoot *more*; on this site the shipped bar already
+shoots four times too often for what lands.  The local arena cannot
+price a fix, because its fields let the same shots through, so the steps
+are ordered by what each can be measured with:
+
+1. **Calibrate.**  Print the in-world moon fraction beside `shoot` and
+   rerun the census: realized completion against the fraction the
+   rollouts promised, by trick.  If the curve is monotone, a higher bar
+   (or one for the first three tricks) has a threshold the data picks.
+   If it is flat — the rollouts cannot tell a good shot from a bad one
+   here — the arena build should not shoot at all.
+2. **Decide the arena build's rule** from that curve: the bar that keeps
+   only shots completing above about 40%, or none.  Arena-only, like
+   `win_only`.
+3. **Check it where it can be checked**: locally it must not lose `win`
+   by more than 2 SE against the `mc:128` field (it will give up cheap
+   moons there; the point is to bound the price), and on the site by
+   P4's practice games or the next version's census.
+
+The deeper fix is rollout defenders that play like this field, which is
+the walled-off opponent-modeling prior.  It stays walled off until step 1
+says the bar alone cannot do the job.
+
+### P3 — closing the last hand
+
+Leading into the final hand we convert 77.7% where the top bots convert
+83–89%, and from second we win half as often as the bots that shoot.
+Win-only already pays the terminal correctly, so the candidates are the
+things it cannot see: rollout opponents that never shoot when a moon is
+their only way to win, and a leader who does not defend against exactly
+that.  Unbuilt, and behind P1 and P2 because both move the same hands.
+
+### P4 — paired practice games
+
+A draft and v2 at the same seed against the same three live bots is the
+measurement every proposal above lacks.  Before building it: the owner's
+leave, a throttle, and a look at how long a queued practice game takes.
+The first use would be P1's recipient ratio and P0's completion rate on
+a few hundred seeds, not a win rate.
+
+## Sequencing
+
+P0 → P2's calibration step (cheap, and the bigger leak) beside P1's two
+screens → confirm or delete P1 → P2's rule → P3.  P4 runs beside them once allowed.  A new version resets the site
+rating and takes about a thousand games to settle, so changes are batched:
+nothing is re-uploaded until P1 and P2 both have verdicts.

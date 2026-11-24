@@ -403,7 +403,12 @@ impl ArenaBot {
         let scale = self.governor.scale[kind as usize];
         eprintln!("{kind:?}: {worlds} worlds, {tricks_left} tricks left, scale {scale:.2}");
         let mut bot = self.bot.take().expect("the bot is home").samples(worlds);
+        let moons = (bot.moon_attempts(), bot.moon_passes());
         let choice = decide(&mut bot, &table);
+        if (bot.moon_attempts(), bot.moon_passes()) != moons {
+            // Read back by scripts/arena-census.py from a replayed transcript.
+            eprintln!("shoot");
+        }
         self.bot = Some(bot);
         choice
     }
