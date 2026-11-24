@@ -217,6 +217,7 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
             // `HeuristicConfig` is non-exhaustive, so start from Default.
             let mut pass = HeuristicConfig::default();
             let mut win_only = false;
+            let mut bar = 0.5;
             for (index, knob) in suffix
                 .unwrap_or_default()
                 .split(',')
@@ -234,9 +235,10 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
                         "mc takes one sample count, then named knobs; got a bare {knob:?} in {spec:?}"
                     ),
                     Some(("win", value)) => win_only = value.parse()?,
+                    Some(("bar", value)) => bar = value.parse()?,
                     Some((key, value)) => {
                         if !pass_knob(&mut pass, key, value)? {
-                            bail!("unknown mc knob {key:?} in {spec:?} (win, {PASS_KNOBS})");
+                            bail!("unknown mc knob {key:?} in {spec:?} (win, bar, {PASS_KNOBS})");
                         }
                     }
                 }
@@ -246,6 +248,7 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
                 MonteCarloBot::new(StdRng::seed_from_u64(seed))
                     .samples(samples)
                     .win_only(win_only)
+                    .moon_bar(bar)
                     .pass_model(pass),
             ))
         }

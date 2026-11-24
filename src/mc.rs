@@ -133,6 +133,8 @@ pub struct MonteCarloBot<R: Rng> {
     shooting: bool,
     moon_attempts: u32,
     moon_passes: u32,
+    moon_share: (u32, u32),
+    moon_bar: f64,
 }
 
 /// One candidate action's Monte Carlo assessment, for a solver or hint view
@@ -178,11 +180,13 @@ impl<R: Rng> MonteCarloBot<R> {
             rng,
             samples: 128,
             gate: 1.5,
+            moon_bar: 0.5,
             win_only: false,
             pass_model: HeuristicConfig::new(),
             shooting: false,
             moon_attempts: 0,
             moon_passes: 0,
+            moon_share: (0, 0),
         }
     }
 
@@ -209,6 +213,20 @@ impl<R: Rng> MonteCarloBot<R> {
     #[must_use]
     pub const fn gate(mut self, gate: f64) -> Self {
         self.gate = gate;
+        self
+    }
+
+    /// Set the share of sampled worlds a moon shot must complete in
+    ///
+    /// The default 0.5 is the strict majority the break-even arithmetic
+    /// asks for, and anything lower still needs that majority.  It assumes
+    /// the rollouts' defenders are as good as the real ones.  Against a
+    /// field that defends better, the share overstates the shot: in the
+    /// bot's Hearts Bot Arena games, shots at 50–99% landed 17% of the
+    /// time and only unanimous ones (`1.0`) landed more often than not.
+    #[must_use]
+    pub const fn moon_bar(mut self, bar: f64) -> Self {
+        self.moon_bar = bar;
         self
     }
 
@@ -272,6 +290,15 @@ impl<R: Rng> MonteCarloBot<R> {
     /// before and after any interval they want to measure.
     pub const fn moon_passes(&self) -> u32 {
         self.moon_passes
+    }
+
+    /// The chosen action at the last searched decision, as `(worlds in
+    /// which it shot the moon, worlds sampled)`
+    ///
+    /// For a shot this is the fraction the majority bar read.  A measurement
+    /// hook for calibrating that bar against real defenders.
+    pub const fn moon_share(&self) -> (u32, u32) {
+        self.moon_share
     }
 
     /// Sample one set of current hidden hands consistent with the view, by
@@ -485,7 +512,8 @@ impl<R: Rng> MonteCarloBot<R> {
     /// clears the significance gate
     fn choose(&mut self, view: &View<'_>, candidates: &[Candidate]) -> Choice {
         let scored = self.score(view, candidates);
-        let best = recommended(&scored, candidates, self.gate);
+        let best = recommended(&scored, candidates, self.gate, self.moon_bar);
+        self.moon_share = (scored[best].2, scored[best].0.len() as u32);
         if candidates[best].shoot {
             self.moon_passes += 1;
         }
@@ -630,7 +658,8 @@ impl<R: Rng> MonteCarloBot<R> {
                 .collect();
         }
 
-        let best = pinned.unwrap_or_else(|| recommended(&scored, &candidates, self.gate));
+        let best =
+            pinned.unwrap_or_else(|| recommended(&scored, &candidates, self.gate, self.moon_bar));
         let mut out: Vec<Assessment> = candidates
             .iter()
             .zip(&scored)
@@ -955,10 +984,14 @@ fn contested(scored: &[Scored], alive: &[usize], gate: f64) -> bool {
 /// point between them sits within a hair of an even chance, whatever the
 /// margin's scale, since the mid-game value is affine in it.  A moon rate
 /// over the sampled worlds is a plain Bernoulli count with none of the tail
-/// trouble, so require it to be a majority.
-fn recommended(scored: &[Scored], candidates: &[Candidate], gate: f64) -> usize {
+/// trouble, so require it to be a majority — and at least `bar` of the
+/// worlds, for a field whose defenders the rollouts flatter.
+fn recommended(scored: &[Scored], candidates: &[Candidate], gate: f64, bar: f64) -> usize {
     let mean = |e: &[f64]| e.iter().sum::<f64>() / e.len() as f64;
-    let likely = |i: usize| 2 * scored[i].2 as usize > scored[i].0.len();
+    let likely = |i: usize| {
+        let (moons, worlds) = (scored[i].2 as usize, scored[i].0.len());
+        2 * moons > worlds && moons as f64 >= bar * worlds as f64
+    };
     let defend = &scored[0].0;
     (1..scored.len())
         .filter(|&i| beats(&scored[i].0, defend, gate))
@@ -1085,7 +1118,8 @@ impl<R: Rng> Strategy for MonteCarloBot<R> {
             return greedy_play(legal, trick, view.played());
         }
         let scored = self.score(view, &candidates);
-        let best = recommended(&scored, &candidates, self.gate);
+        let best = recommended(&scored, &candidates, self.gate, self.moon_bar);
+        self.moon_share = (scored[best].2, scored[best].0.len() as u32);
         if candidates[best].shoot {
             self.moon_attempts += 1;
         }
@@ -1434,9 +1468,13 @@ mod tests {
         let challenger = vec![1.0; 4];
         let mut scored = vec![(incumbent, 0.0, 0), (challenger, 0.0, 2)];
 
-        assert_eq!(recommended(&scored, &candidates, 1.5), 0);
+        assert_eq!(recommended(&scored, &candidates, 1.5, 0.5), 0);
         scored[1].2 = 3;
-        assert_eq!(recommended(&scored, &candidates, 1.5), 1);
+        assert_eq!(recommended(&scored, &candidates, 1.5, 0.5), 1);
+        // A unanimous bar refuses three worlds in four and admits four.
+        assert_eq!(recommended(&scored, &candidates, 1.5, 1.0), 0);
+        scored[1].2 = 4;
+        assert_eq!(recommended(&scored, &candidates, 1.5, 1.0), 1);
     }
 
     #[test]

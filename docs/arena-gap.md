@@ -7,9 +7,12 @@ The site's own game records say the gap is moons: we complete
 a third as many as the field, and the seat we pass to shoots more often
 than it does behind anyone else's pass.  Ordinary card play is not the
 problem.  P0 (an attempt census) is built and measured, and adds a third
-finding larger than either: we start a shot on 6.4% of hands and land
-fewer than one in four.  P1 (the anti-feed pass, re-priced against a
-field that shoots) is a measured null.  Siblings:
+finding larger than either: we start a shot on 5.4% of hands and land
+about one in five.  P1 (the anti-feed pass, re-priced against a
+field that shoots) is a measured null.  P2's calibration is measured
+too: the rollouts' moon share says nothing about a shot's chances here
+until it is unanimous, so the arena build's bar moves to 100% if the
+local price holds (two A/Bs queued).  Siblings:
 [cfr-gap.md](cfr-gap.md), whose closed proposals this doc re-reads under
 a different gate, and [passing-shape.md](passing-shape.md).
 
@@ -122,8 +125,10 @@ rating (2320 → 2327).
 - **Site games** — the export above.  Free, exact, and the only
   measurement of the real field; it sees outcomes, not our intentions.
 - **`scripts/arena-census.py`** — replays our seat's public transcript
-  through the arena wasm and reads the `shoot` line `arena/` now prints on
-  stderr.  The wasm is deterministic in the `INIT` seed and the fuel
+  through the arena wasm and reads the `shoot M/N` line `arena/` now
+  prints on stderr (the shot completed in M of N sampled worlds).  It
+  also counts each shot's *losers* at its first play: cards held that are
+  not sure winners against the cards still out.  The wasm is deterministic in the `INIT` seed and the fuel
   figures on each prompt, and a replay whose replies differ from the
   transcript is dropped.  About 1.5 CPU-seconds a game.
 - **The `mc:128` field** — unlike `greedy`, it shoots (about 5.5% of
@@ -139,46 +144,45 @@ rating (2320 → 2327).
 
 | # | Proposal | Touches | State |
 | --- | --- | --- | --- |
-| P0 | attempt census on site games | `arena/` stderr + a script | measured on 185 games |
+| P0 | attempt census on site games | `arena/` stderr + a script | measured on 1,500 games |
 | P1 | anti-feed pass, priced against shooters | pass policy | null (2026-11-25); knob deleted |
-| P2 | the moon bar against real defenders | selection rule | next; calibration step unbuilt |
+| P2 | the moon bar against real defenders | selection rule | calibrated; unanimous bar built, local price queued |
 | P3 | closing the last hand | win-only payoff | unbuilt |
 | P4 | paired practice games | instrument | needs the owner's leave |
 
 ### P0 — attempt census
 
-**Status: MEASURED (2026-11-25), on the first 185 games; the rest of a
-1,500-game sample is still downloading.**
+**Status: MEASURED (2026-11-25), on 1,500 games.**
 
-The 185 most recent v2 games, 1,851 hands, replayed with no divergence:
+The 1,500 most recent v2 games, 14,642 hands, replayed with no divergence:
 
 | | count | rate |
 | --- | ---: | ---: |
-| hands with a shot started in play | 118 | 6.4% of hands |
-| … completed | 27 | 22.9% of shots |
-| … failed | 91 | mean 19.0 points taken |
-| shoot passes chosen | 53 | 2.9% of hands |
-| … ending in our moon | 12 | 22.6% of shoot passes |
-| moons completed with no shot logged | 3 | |
+| hands with a shot started in play | 796 | 5.4% of hands |
+| … completed | 167 | 21.0% of shots |
+| … failed | 629 | mean 19.0 points taken |
+| shoot passes chosen | 399 | 2.7% of hands |
+| … ending in our moon | 72 | 18.0% of shoot passes |
+| moons completed with no shot logged | 38 | |
 
 We do shoot — as often as the board's keenest shooters complete — and
-fewer than one shot in four lands.  The strict-majority bar admits a shot
-only when it completes in more than half of the sampled worlds, and the
-same build completes about 70% of its attempts against the local fields,
-so the rollouts' defenders are far softer than the site's.  Shots started
-on the first three tricks are the worst: 12 of 74 (16%).
+one shot in five lands.  The strict-majority bar admits a shot only when
+it completes in more than half of the sampled worlds, and the same build
+completes about 70% of its attempts against the local fields, so the
+rollouts' defenders are far softer than the site's.  Shots started on
+the first three tricks are the worst: 86 of 471 (18%).
 
 The cost is large.  A completed moon is a 26-point swing on each
 opponent; a failed shot leaves us about 19 points against 6 on an
-ordinary hand.  At 22.9% the average shot loses about 7 points of margin
-against simply playing the hand, on 6.4% of hands — roughly half a point
-a hand, four to five points a game.  Break-even in points is near 40%
+ordinary hand.  Over the 796 shots the realized margin
+(`mean(others) − own`) is −7.3 points a shot, on 5.4% of hands — about
+0.4 points a hand, four points a game.  Break-even in points is near 40%
 completion.  This, not timidity, is why our moon count is the lowest on
 the board, and it is the largest single leak this doc has found.
 
 ```console
-scripts/arena-census.py fetch  ab-results/arena-census --limit 1500
-scripts/arena-census.py replay ab-results/arena-census ab-results/arena-census/bot.wasm
+python3 scripts/arena-census.py fetch  ab-results/arena-census --limit 1500
+python3 scripts/arena-census.py replay ab-results/arena-census ab-results/arena-census/share.wasm
 ```
 
 ### P1 — anti-feed pass, priced against shooters
@@ -253,19 +257,97 @@ shoots four times too often for what lands.  The local arena cannot
 price a fix, because its fields let the same shots through, so the steps
 are ordered by what each can be measured with:
 
-1. **Calibrate.**  Print the in-world moon fraction beside `shoot` and
-   rerun the census: realized completion against the fraction the
-   rollouts promised, by trick.  If the curve is monotone, a higher bar
-   (or one for the first three tricks) has a threshold the data picks.
-   If it is flat — the rollouts cannot tell a good shot from a bad one
-   here — the arena build should not shoot at all.
-2. **Decide the arena build's rule** from that curve: the bar that keeps
-   only shots completing above about 40%, or none.  Arena-only, like
-   `win_only`.
+1. **Calibrate** — done, below.
+2. **Decide the arena build's rule** from that curve — done: the
+   unanimous bar.  Arena-only, like `win_only`.
 3. **Check it where it can be checked**: locally it must not lose `win`
    by more than 2 SE against the `mc:128` field (it will give up cheap
    moons there; the point is to bound the price), and on the site by
-   P4's practice games or the next version's census.
+   P4's practice games or the next version's census.  Queued.
+
+#### Calibration (2026-11-25)
+
+The census wasm rebuilt to print the share (`shoot M/N`), same 1,500
+games, still no divergence.  Realized completion against the share of
+worlds the shot completed in:
+
+| in-world share | shots | landed | rate | mean points |
+| --- | ---: | ---: | ---: | ---: |
+| 50–60% | 237 | 28 | 11.8% | 15.7 |
+| 60–70% | 166 | 27 | 16.3% | 15.4 |
+| 70–80% | 120 | 26 | 21.7% | 15.1 |
+| 80–90% | 112 | 23 | 20.5% | 16.0 |
+| 90–99.9% | 83 | 18 | 21.7% | 16.7 |
+| 100% | 78 | 45 | 57.7% | 8.5 |
+
+The curve is flat where the bar lives.  From 70% to just under 100% the
+rollouts' confidence buys nothing, and a shot they call nine in ten
+lands one time in five.  Only unanimity carries information: one world
+in a thousand with a defender who stops the shot is the difference
+between 22% and 58%.  The 718 shots short of unanimous landed 17.0%.
+
+Shoot *passes* never get there.  Their share tops out below 100%, and no
+band lands above 29% (50–60%: 32 of 213; 60–70%: 22 of 114; 70–80%: 10
+of 44; 80–90%: 7 of 24; above: 1 of 4).
+
+#### The boss-card rule, priced on the same shots
+
+Moonwarden, a bot of our own design, shoots most on the board (7.4% of
+hands) by a rule its author describes as running a moon "only from
+strong hands, and only … while its cards are still boss".  A proxy for
+it, read off the public record at each shot's first play — *losers*,
+the cards held that are neither above every outstanding card of their
+suit nor long enough to outlast them:
+
+| losers | shots | landed | rate | mean points |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 8 | 8 | 100.0% | 0.0 |
+| 1 | 37 | 18 | 48.6% | 10.6 |
+| 2 | 61 | 21 | 34.4% | 13.2 |
+| 3 | 78 | 20 | 25.6% | 13.5 |
+| 4–5 | 205 | 44 | 21.5% | 14.9 |
+| 6+ | 407 | 56 | 13.8% | 16.3 |
+
+Monotone, and "at most one loser" clears break-even on both halves of
+the games (8 of 15 on even game ids, 18 of 30 on odd).  But it is the
+weaker of the two filters, and most of what it knows the unanimous
+rollouts know too:
+
+| | shots | landed | rate |
+| --- | ---: | ---: | ---: |
+| unanimous, at most 2 losers | 45 | 34 | 75.6% |
+| unanimous, 3 or more | 33 | 11 | 33.3% |
+| short of unanimous, at most 2 losers | 61 | 13 | 21.3% |
+| short of unanimous, 3 or more | 657 | 109 | 16.6% |
+
+A boss hand the rollouts are not unanimous about is no better than any
+other shot.  So the rule is one knob, not two: `MonteCarloBot::moon_bar`
+(arena spec `bar=X`; default 0.5, the strict majority), set to 1.0.  The
+losers term would lift 58% to 76% by refusing 33 more shots in 1,500
+games that land a third of the time — near break-even, not worth a
+second mechanism until the bar is on the site.
+
+**What the bar gives up.**  On these games it keeps 45 of the 167 logged
+moons (and the 38 that arrive unplanned), and refuses 718 shots that
+took 15.7 points each with their 122 moons counted as zero.  It also
+ends shoot passes, none of which reach 100%.  What those hands score
+played straight is the one number the census cannot give.
+
+**Queued (2026-11-25).**  2,000 games, seed 21, paired:
+
+```console
+scripts/queue-ab.sh bar1-mcfield --games 2000 --seed 21 \
+    --ab mc:1024,win=true,bar=1 mc:1024,win=true mc:128 mc:128 mc:128
+scripts/queue-ab.sh bar1-greedyfield --games 2000 --seed 21 \
+    --ab mc:1024,win=true,bar=1 mc:1024,win=true greedy greedy greedy
+```
+
+**Gate.**  `win ≥ −2 SE` against three `mc:128` sets `moon_bar(1.0)` in
+`arena/`.  The local fields let seven shots in ten through, so the bar
+is expected to lose moons and points there; the gate bounds what the
+site's gain has to cover, and the greedy leg is the softest field and
+so the worst case for that price.  Worse than −2 SE: weigh the measured
+local loss against the census's four points a game before deciding.
 
 The deeper fix is rollout defenders that play like this field, which is
 the walled-off opponent-modeling prior.  It stays walled off until step 1
@@ -291,6 +373,7 @@ a few hundred seeds, not a win rate.
 ## Sequencing
 
 P0 → P2's calibration step (cheap, and the bigger leak) beside P1's two
-screens → confirm or delete P1 → P2's rule → P3.  P4 runs beside them once allowed.  A new version resets the site
+screens → confirm or delete P1 → P2's rule (here now: read the two
+`bar1` runs) → P3.  P4 runs beside them once allowed.  A new version resets the site
 rating and takes about a thousand games to settle, so changes are batched:
 nothing is re-uploaded until P1 and P2 both have verdicts.

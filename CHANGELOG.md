@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (+5.3 SE) against three `greedy` — bought with `rank` −0.064±0.008
   (−8.1 SE) and −0.014±0.005 (−2.7 SE), which is why it stays off
   everywhere a placement other than first is worth something.
+- `MonteCarloBot::moon_bar` sets the share of sampled worlds a moon shot
+  must complete in (default 0.5, the strict majority it always needed),
+  for fields whose defenders the rollouts flatter; the arena example
+  takes it as `mc:SAMPLES,bar=X`.  `MonteCarloBot::moon_share` reports
+  the chosen action's share at the last searched decision.
 - `Assessment::shoot` flags a moon-attempt row, and
   `MonteCarloBot::set_moon_plan` lets an assess-only hint bot carry a plan
   its seat chose.  The terminal and web hints use them: playing the flagged
@@ -71,8 +76,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/arena-census.py` replays the bot's public arena transcripts
   through the wasm to count the moon shots it starts, which the site does
   not record; `arena/` prints a `shoot` line on stderr for it to read.
-  Over the first 185 games it starts a shot on 6.4% of hands and lands
-  22.9% of them, where the local fields let about 70% through.
+  Over 1,500 games it starts a shot on 5.4% of hands and lands 21.0% of
+  them, where the local fields let about 70% through.
+- Calibrate the moon bar on those games (docs/arena-gap.md, P2): the
+  `shoot` line now carries the share of worlds the shot completed in.
+  Shots at 50–99% of worlds land 17.0% of the time (122 of 718) with no
+  trend above 70%; unanimous ones land 57.7% (45 of 78).  A boss-card
+  count (cards that are not sure winners) separates shots too, but adds
+  little once the rollouts are unanimous.
 - Measure an anti-feed pass for the arena entry (docs/arena-gap.md, P1):
   a `pass_score` penalty on queens, kings, aces and T♥/J♥, at `mc:1024`
   win-only against three `mc:128`, 2000 game blocks, seed 21, paired.

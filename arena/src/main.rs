@@ -407,7 +407,8 @@ impl ArenaBot {
         let choice = decide(&mut bot, &table);
         if (bot.moon_attempts(), bot.moon_passes()) != moons {
             // Read back by scripts/arena-census.py from a replayed transcript.
-            eprintln!("shoot");
+            let (moons, worlds) = bot.moon_share();
+            eprintln!("shoot {moons}/{worlds}");
         }
         self.bot = Some(bot);
         choice

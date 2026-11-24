@@ -4,9 +4,11 @@
 The site records completed moons only.  Our own attempts are invisible there,
 so this replays each game's public transcript through the arena wasm (which is
 deterministic in its `INIT` seed and the fuel figures on each prompt) and reads
-the `shoot` lines it prints on stderr.  A replay whose replies differ from the
-transcript is counted as diverged and left out, so the census cannot quietly
-describe a different bot from the one that played.
+the `shoot M/N` lines it prints on stderr (the shot completed in M of the N
+sampled worlds).  A replay whose replies differ from the transcript is counted
+as diverged and left out, so the census cannot quietly describe a different bot
+from the one that played.  Each shot also records its *losers* at its first
+play: cards held that are not sure winners against the cards still out.
 
     scripts/arena-census.py fetch  DIR [--bot NAME] [--version N] [--limit N]
     scripts/arena-census.py replay DIR WASM [--jobs N]
@@ -27,6 +29,19 @@ import time
 import urllib.request
 
 SITE = "https://hearts-arena.snowfrog.dev/api"
+RANKS = "23456789TJQKA"
+DECK = {rank + suit for rank in RANKS for suit in "CDSH"}
+
+
+def losers(hand, out):
+    """Cards in `hand` that are not sure winners: neither above every card of the
+    suit still `out`, nor long enough to outlast them all in one hand."""
+    sure = 0
+    for suit in "CDSH":
+        mine = sorted((RANKS.index(c[0]) for c in hand if c[1] == suit), reverse=True)
+        theirs = [RANKS.index(c[0]) for c in out if c[1] == suit]
+        sure += sum(rank > max(theirs, default=-1) or len(theirs) <= i for i, rank in enumerate(mine))
+    return len(hand) - sure
 
 
 def get(path):
@@ -76,32 +91,40 @@ def replay_one(job):
     if run.stdout.split("\n")[:-1] != replies:
         return {**base, "diverged": True}
 
-    # One stderr line per prompt ("Pass: ..." / "Play: ..."), then "shoot" if
-    # that decision began a shot; prompts and replies are in the same order.
+    # One stderr line per prompt ("Pass: ..." / "Play: ..."), then "shoot M/N"
+    # if that decision began a shot; prompts and replies are in the same order.
     shot = []
     for line in run.stderr.splitlines():
         if line.startswith(("Pass:", "Play:")):
-            shot.append(False)
-        elif line == "shoot":
-            shot[-1] = True
+            shot.append(None)
+        elif line.startswith("shoot"):
+            moons, _, worlds = line[6:].partition("/")
+            shot[-1] = int(moons) / int(worlds) if worlds else -1.0  # -1: a wasm without the share
     assert len(shot) == len(replies), (path, len(shot), len(replies))
 
     rows, decision = [], 0
     for index, hand in enumerate(record["transcript"]["hands"]):
         row = {"pass": None, "shoot_pass": False, "shoot_trick": None}
-        trick = 0
+        trick, held, played = 0, set(), set()
         for entry in hand:
             words = entry["line"].split()
             if words[0] == "HAND":
                 row["pass"] = words[2]
+            elif words[0] in ("CARDS", "RECEIVED"):
+                held |= set(words[1:])
+            elif words[0] == "PLAYED":
+                played.add(words[2])
             elif words[0] == "TRICK":
                 trick = int(words[1])
             elif entry["reply"]:
-                if shot[decision]:
+                if shot[decision] is not None:
                     if words[0] == "PASS":
-                        row["shoot_pass"] = True
+                        row["shoot_pass"], row["pass_share"] = True, shot[decision]
                     elif row["shoot_trick"] is None:
-                        row["shoot_trick"] = trick
+                        row["shoot_trick"], row["share"] = trick, shot[decision]
+                        row["losers"] = losers(held, DECK - held - played)
+                held -= set(words[1:])
+                played |= set(words[1:]) if words[0] == "PLAY" else set()
                 decision += 1
         if index < len(hands):
             row["points"] = hands[index]["points"][seat]
@@ -155,6 +178,24 @@ def report(args):
         side = [h for g in kept if g["won"] == won for h in g["hands"]]
         print(f"games {'won' if won else 'lost'}: shots per 100 hands",
               f"{100 * sum(h['shoot_trick'] is not None for h in side) / max(1, len(side)):.2f}")
+
+    def table(title, shots, key, bands):
+        print(title, "-> started / completed / mean points")
+        for low, high in bands:
+            at = [h for h in shots if low <= h[key] < high]
+            if at:
+                print(f"  [{low:g}, {high:g}): {len(at):4} / {sum(h['moon'] == 'ours' for h in at):4}"
+                      f" ({100 * sum(h['moon'] == 'ours' for h in at) / len(at):5.1f}%)"
+                      f" / {sum(h['points'] for h in at) / len(at):4.1f}")
+
+    shares = [(0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 1.0), (1.0, 1.1)]
+    few = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 6), (6, 14)]
+    table("shots by losers at the first play", tried, "losers", few)
+    if any(h["share"] >= 0 for h in tried):
+        table("shots by in-world moon share", tried, "share", shares)
+        table("... of those with at most 2 losers", [h for h in tried if h["losers"] <= 2], "share", shares)
+        table("... of those with 3 or more", [h for h in tried if h["losers"] > 2], "share", shares)
+        table("shoot passes by in-world moon share", passes, "pass_share", shares)
 
 
 def main():
