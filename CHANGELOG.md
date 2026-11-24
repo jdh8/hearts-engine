@@ -73,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not record; `arena/` prints a `shoot` line on stderr for it to read.
   Over the first 185 games it starts a shot on 6.4% of hands and lands
   22.9% of them, where the local fields let about 70% through.
+- Measure an anti-feed pass for the arena entry (docs/arena-gap.md, P1):
+  a `pass_score` penalty on queens, kings, aces and T♥/J♥, at `mc:1024`
+  win-only against three `mc:128`, 2000 game blocks, seed 21, paired.
+  Null on `win` at both weights (−0.4 SE at 7, −0.0 SE at 4), and weight
+  7 costs `rank` −0.039±0.016 (−2.4 SE); the experimental knob never
+  landed.
 - `scripts/queue-ab.sh` queues an arena run through pueue against a
   frozen worktree snapshot of the checkout, adapted from pons; results
   land in the ignored `ab-results/`.

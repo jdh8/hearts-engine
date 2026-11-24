@@ -9,7 +9,7 @@ than it does behind anyone else's pass.  Ordinary card play is not the
 problem.  P0 (an attempt census) is built and measured, and adds a third
 finding larger than either: we start a shot on 6.4% of hands and land
 fewer than one in four.  P1 (the anti-feed pass, re-priced against a
-field that shoots) is queued.  Siblings:
+field that shoots) is a measured null.  Siblings:
 [cfr-gap.md](cfr-gap.md), whose closed proposals this doc re-reads under
 a different gate, and [passing-shape.md](passing-shape.md).
 
@@ -140,7 +140,7 @@ rating (2320 → 2327).
 | # | Proposal | Touches | State |
 | --- | --- | --- | --- |
 | P0 | attempt census on site games | `arena/` stderr + a script | measured on 185 games |
-| P1 | anti-feed pass, priced against shooters | pass policy | queued |
+| P1 | anti-feed pass, priced against shooters | pass policy | null (2026-11-25); knob deleted |
 | P2 | the moon bar against real defenders | selection rule | next; calibration step unbuilt |
 | P3 | closing the last hand | win-only payoff | unbuilt |
 | P4 | paired practice games | instrument | needs the owner's leave |
@@ -183,17 +183,20 @@ scripts/arena-census.py replay ab-results/arena-census ab-results/arena-census/b
 
 ### P1 — anti-feed pass, priced against shooters
 
-The mechanism is cfr-gap P4's, rebuilt as an experimental knob:
-`HeuristicConfig::feed_penalty` (doc-hidden, default 0; arena spec
-`feed=N`) subtracts from `pass_score` for any queen, king or ace and for
-T♥/J♥.  The spade tiers (+100/+90/+80) still move an unguarded Q♠ and her
-catchers at any weight tried, and the shoot-pass ballast is ranked with
-the penalty off so a shooter keeps its controls.  Through `pass_model` it
-also reaches the rollout opponents' passes and the incoming-pass
-likelihood, as P4's did.
+**Status: NULL (2026-11-25).  No `win` signal at either weight, and the
+heavier one costs placement; the knob is deleted.**
 
-What is new is the field and the gate.  Queued 2026-11-25, 2,000 games,
-seed 21, paired, against three `mc:128`:
+The mechanism was cfr-gap P4's, rebuilt as an experimental knob:
+`HeuristicConfig::feed_penalty` (doc-hidden, default 0; arena spec
+`feed=N`) subtracted from `pass_score` for any queen, king or ace and for
+T♥/J♥.  The spade tiers (+100/+90/+80) still moved an unguarded Q♠ and
+her catchers at any weight tried, and the shoot-pass ballast was ranked
+with the penalty off so a shooter kept its controls.  Through
+`pass_model` it also reached the rollout opponents' passes and the
+incoming-pass likelihood, as P4's did.
+
+What was new was the field and the gate.  2,000 games, seed 21, paired,
+against three `mc:128`:
 
 ```console
 scripts/queue-ab.sh feed7-mcfield --games 2000 --seed 21 \
@@ -203,24 +206,44 @@ scripts/queue-ab.sh feed4-mcfield --games 2000 --seed 21 \
 ```
 
 Weight 7 is P4's retention knee (it kept 54% of the cards CFR was fed);
-4 is a milder arm in case 7 pays too much ordinary play.
+4 was a milder arm in case 7 paid too much ordinary play.
 
-**Gate.**  `win ≥ +2 SE` at either weight advances the better one to a
-fresh-seed confirmation of 6,000 games, with a greedy-field leg that must
-hold `win ≥ −2 SE`.  A confirmed arm ships in `arena/` only, with the
-knob made permanent and documented.  Anything less: delete the knob, the
-ballast split and the arena key, and record the null here.
+**Gate.**  `win ≥ +2 SE` at either weight would have advanced the better
+one to a fresh-seed confirmation of 6,000 games, with a greedy-field leg
+holding `win ≥ −2 SE`.  Anything less: delete the knob, the ballast split
+and the arena key, and record the null here.
 
-**Known weakness.**  The arena prints the challenger's own `moons`, not
-the moons completed against it, so a null cannot say whether the pass
-failed to starve the `mc:128` shooters or starved them at too high a
-price.  If the screen is within ±1 SE, add that column before deciding.
+**Result.**  Challenger minus baseline, paired over the same blocks:
+
+| | `feed=7` | `feed=4` |
+| --- | --- | --- |
+| `win` | −0.0023 ± 0.0062 (−0.4 SE) | −0.0003 ± 0.0061 (−0.0 SE) |
+| `rank` | −0.0389 ± 0.0159 (−2.4 SE) | −0.0158 ± 0.0156 (−1.0 SE) |
+| `not-last` | −0.0211 ± 0.0062 (−3.4 SE) | −0.0094 ± 0.0063 (−1.5 SE) |
+| `points` | −0.1201 ± 0.0566 (−2.1 SE) | −0.0325 ± 0.0541 (−0.6 SE) |
+| `moons` (own) | +0.0040 ± 0.0011 (+3.6 SE) | +0.0001 ± 0.0010 (+0.1 SE) |
+
+Neither arm clears the gate.  The dose-response runs the wrong way on
+everything but the seat's own moons: weight 7 is worse than weight 4 on
+`rank`, `not-last` and `points`, and its extra moons (the kept top cards
+are a shooter's own controls) do not reach `win`.
+
+**What the null does not say.**  The arena prints the challenger's own
+`moons`, not the moons completed against it, so this cannot tell a pass
+that failed to starve the `mc:128` shooters from one that starved them
+at too high a price.  The plan was to add that column if the screen
+landed within ±1 SE on `win`, which it did; the column was skipped
+because the answer could not change the decision — a penalty that
+already costs −2.4 SE of `rank` at the weight that retains the cards has
+no arm left to ship.  The column is still owed if feeding is priced
+again by another mechanism.
 
 **Not tried yet.**  The site data points at a second, cheaper rule — put
 one low heart in the pass — which halves the recipient's moon rate for
 every bot on the board.  It is a different mechanism from a penalty on
-top cards and gets its own arm only if P1's knob shows the field can
-price feeding at all.
+top cards and was to get its own arm only if P1's knob showed the field
+can price feeding at all.  The knob did not show that, so the arm stays
+unqueued; it would need the moons-against column first.
 
 ### P2 — the moon bar against real defenders
 
