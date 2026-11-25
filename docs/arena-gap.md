@@ -14,9 +14,8 @@ too: the rollouts' moon share says nothing about a shot's chances here
 until it is unanimous — but the unanimous bar lost `win` by 12.9 SE
 against the local field, which cannot price it.  That is the second
 proposal to die on the instrument rather than on its merits, so the
-campaign turns to P5: a clone of the site's field, cut from its public
-games, to stand in for the field locally and then for the opponents in
-the rollouts.  Siblings:
+campaign turns to P5: defenders calibrated to the site's pooled moon
+statistics, first as the local field and then in the rollouts.  Siblings:
 [cfr-gap.md](cfr-gap.md), whose closed proposals this doc re-reads under
 a different gate, and [passing-shape.md](passing-shape.md).
 
@@ -158,7 +157,7 @@ rating (2320 → 2327).
 | P2 | the moon bar against real defenders | selection rule | calibrated; unanimous bar fails the local gate (`win` −12.9 SE), unpriced on the site |
 | P3 | closing the last hand | win-only payoff | unbuilt |
 | P4 | paired practice games | instrument | needs the owner's leave |
-| P5 | a clone of the field | instrument, then rollout opponents | stage 0 passed (2026-11-25); stage 1 waits on the owner |
+| P5 | calibrated defenders | instrument, then rollout defenders | stage 0 passed (2026-11-25); clone dropped, stage 1 next |
 
 ### P0 — attempt census
 
@@ -400,12 +399,13 @@ leave, a throttle, and a look at how long a queued practice game takes.
 The first use would be P1's recipient ratio and P0's completion rate on
 a few hundred seeds, not a win rate.
 
-### P5 — a clone of the field
+### P5 — calibrate the field, don't clone it
 
 **Why.**  P1 and P2 were both priced against `mc:128`, a field that lets
 seven shots in ten through where the site lets two.  A third moon rule
-would meet the same instrument.  And the authors' own descriptions
-(`GET /api/bots/<name>`) put a ceiling on this design:
+would meet the same instrument, and the rollouts carry the same bias:
+their defenders are our defenders.  The authors' own descriptions
+(`GET /api/bots/<name>`) say where the field's strength comes from:
 
 | bot | rating (2026-11-25) | what its author says |
 | --- | ---: | --- |
@@ -416,56 +416,57 @@ would meet the same instrument.  And the authors' own descriptions
 | Cleo v2 | 2379 | 90k-parameter residual MLP |
 | `rusty-hearts` v2 | 2360 | 1024 worlds over the greedy rollout |
 
-A 90k-parameter network with no search outrates 1024 worlds over a weak
-rollout policy, and the bot built exactly like ours sits 25 points up.
-More worlds are measured flat past 512.  What is left to improve is who
-the rollouts think they are playing against, which is also what the
-census found: defenders too soft by a factor of three.
+The bot built exactly like ours sits 25 points up, and more worlds are
+measured flat past 512.  What is left is who the rollouts think they are
+playing against, which is also what the census found: defenders too
+soft by a factor of three.
 
-**What.**  One artifact with two uses.  A small pass-and-play network
-fitted to the strong bots' recorded decisions — about 56,000 games,
-every hand face up, roughly 28 million plays and 1.6 million passes,
-growing by some 4,000 games a day — is first the local arena's field and
-then the opponents in the rollouts.  The second use is the opponent
-model this doc kept walled off until the bar alone had failed.  It has.
+**Why not a clone.**  The first draft fitted a small network to the
+strong bots' recorded decisions, as the local field and then as the
+rollouts' opponents.  The export shows every hand face up, but the site
+offers no way to download another bot's module, and that reads as a
+choice: the bots are their authors'.  A network trained on Cleo's plays
+recovers what that choice withholds, so the owner's answer is expected
+to be no, and the draft is dropped rather than asked about.
+
+**What instead.**  Tune our own defenders until the local field
+reproduces the site's *pooled* outcomes — how often shots start and
+land, and how often we win — and fit no bot's decisions.  That is the
+census's use of the export, which needs no leave.  Our defence has one
+knob today, the trigger: once a single opponent has swept that many
+points and is winning the trick, stop ducking and take it.  It is 8,
+hard-coded in three places (`HeuristicConfig::moon_defense`,
+`MonteCarloBot`'s live preempt, and the shoot worlds in `rollout_play`).
+The trigger goes first; a second knob (keeping a stopper rather than
+ducking it away early) is built only if the trigger cannot reach the
+target.
 
 | stage | step | gate |
 | --- | --- | --- |
-| 0 | mirror the export; replay every hand through the real rules as each seat's `View` | no hand diverges |
-| 1 | fit the clone | `rusty-hearts` v2 against three clones reproduces the site: about 21% of its shots land (not 70%), and it wins about 22% |
-| 2 | clones as the arena field; re-price P1 and P2's bar | the usual `win` gate |
-| 3 | the clone as the rollouts' opponents | `win` against the clone field |
-| 4 | confirm on the site (P4), then upload v3 | site win rate |
-
-**Why this is not ordinary-play's P2 again.**  That distilled rollout
-imitated our own search at its own positions and came back null on
-`rank` with softer defenders (`moons` +5.9 SE).  This one imitates bots
-that do stop moons — opponents shoot 0.84 times their usual rate at
-Ava's table — and stage 1's gate is a moon statistic, so a clone with
-soft defenders fails before anything is built on it.
+| 0 | mirror the export; replay every hand through the real rules as each seat's `View` | no hand diverges — **passed** |
+| 1 | the targets from the mirror: our shots started and landed (the census), our win rate, the field's moons per hand | written down with their SEs |
+| 2 | the trigger as a `MonteCarloBot` knob, live and in the rollouts separately, today's value by default; sweep the field's | `rusty-hearts` v2 against three calibrated `mc:128` lands about 21% of its shots (not 70%) and wins about 22% |
+| 3 | re-price P1 and P2's bar against the calibrated field | the usual `win` gate |
+| 4 | the rollouts' trigger, against the calibrated field | `win` |
+| 5 | confirm on the site (P4, or the new version's census), then upload v3 | site win rate |
 
 **Costs and risks.**
 
-- *Fuel.*  A 90k-parameter network is about 90k multiply-adds an
-  evaluation; as the rollouts' opponents that is an estimated 2.5 times
-  today's cost a world, so some 400 worlds in the present budget.  Not
-  measured; the Governor's prices are re-measured at stage 3.  The module
-  limit is 16 MiB and such a network is under 2 MiB.
-- *Circularity.*  With one clone as both field and rollout model, the
-  rollouts know their opponents exactly and the local A/B flatters them.
-  The two are fitted on disjoint halves of the games, and the site has
-  the last word (stage 4).
-- *Rare positions.*  Moon defence is a small share of the decisions and
-  the share that matters.  Stage 1's gate is what catches it.
-- *Etiquette.*  The export is public and documented for scripts, and
-  stage 0 only reads it.  Fitting a model to other authors' bots is a
-  further step: stage 1 waits on the owner's answer, asked with P4's.
+- *The knob may be too small.*  A reactive trigger breaks a shot in
+  progress; real defenders also keep stoppers from the pass on.  If no
+  trigger value lands 21% of shots, stage 2 fails and says so, and the
+  stopper knob is next.
+- *Circularity.*  With one defence model in the field and the rollouts,
+  the rollouts know the field exactly and the local A/B flatters them.
+  The field is honest only on the statistics it was fitted to, and the
+  site has the last word (stage 5).
+- *Fuel.*  None to speak of: a trigger costs a comparison.  We spend a
+  quarter of the pool on the mean hand (below).
 
-**Expectation, not measurement.**  Stages 1–2 could bring the entry to
-the Nightjar–Moonwarden level by pricing the moon rules honestly.  Stage
-3 is the bet, and the only route in this doc past 2450.  It does not
-catch Ava: a clone stays below what it copies, and search on top
-recovers part of the difference.
+**Expectation, not measurement.**  Cruder than a clone.  It repairs the
+instrument that killed P1 and P2's bar, and the rollouts' largest known
+bias, which could bring the entry to the Nightjar–Moonwarden level.  It
+does not reach past 2450; this doc has no route there now.
 
 **Stage 0: passed (2026-11-25).**
 
@@ -494,15 +495,15 @@ hand):
 
 The field splits as the authors say: the searchers spend most of the
 pool, the learned policies (Ava, Brooke, Cleo, the CFR bots) almost
-none.  We spend under a quarter on the mean hand, so stage 3's
-estimated 2.5× cost a world has room beside the worst hand's 88%,
-which the Governor already caps.
+none.  We spend under a quarter on the mean hand (88% on the worst,
+which the Governor caps), so the budget is not what holds the entry
+back.
 
 ## Sequencing
 
 P0 → P2's calibration step (cheap, and the bigger leak) beside P1's two
 screens → confirm or delete P1 → P2's rule (failed locally, 2026-11-25)
-→ P5 stage 0 (passed) → the owner's leave for P4 and for stage 1 (here now) →
-P5 stages 1–3 → P4 as the confirm → P3.  A new version resets the site
+→ P5 stage 0 (passed) → P5 stages 1–4 (stage 1 here now) → P4, with
+the owner's leave, as the confirm → P3.  A new version resets the site
 rating and takes about a thousand games to settle, so changes are batched:
-nothing is re-uploaded before P5 stage 4.
+nothing is re-uploaded before P5 stage 5.

@@ -93,9 +93,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/arena-export.py` mirrors the arena's public game export and
   flattens it to one line per hand; `examples/field.rs` replays each hand
   through the real rules as its seats' views and fails on any divergence.
-  Stage 0 of a clone of the site's field (docs/arena-gap.md, P5), to
-  stand in for the field locally and then for the rollouts' opponents:
-  all 56,300 exported games (525,603 hands) replay with no divergence.
+  Stage 0 of calibrating our defenders to the site's pooled moon
+  statistics (docs/arena-gap.md, P5), first as the local field and then
+  in the rollouts: all 56,300 exported games (525,603 hands) replay with
+  no divergence.  The earlier plan to clone the field from other bots'
+  recorded decisions is dropped: the site keeps bot modules private.
 - Measure an anti-feed pass for the arena entry (docs/arena-gap.md, P1):
   a `pass_score` penalty on queens, kings, aces and T♥/J♥, at `mc:1024`
   win-only against three `mc:128`, 2000 game blocks, seed 21, paired.
