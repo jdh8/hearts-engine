@@ -84,6 +84,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trend above 70%; unanimous ones land 57.7% (45 of 78).  A boss-card
   count (cards that are not sure winners) separates shots too, but adds
   little once the rollouts are unanimous.
+- Price the unanimous bar locally (docs/arena-gap.md, P2): `bar=1` at
+  `mc:1024` win-only, 2000 game blocks, seed 21, paired, loses `win`
+  −0.057±0.004 (−12.9 SE) against three `mc:128` and −0.034±0.004
+  (−8.4 SE) against three `greedy`, at −0.54 points a deal and half its
+  moons.  That is more than the site leak plausibly covers, so `arena/`
+  does not set the bar; the site check waits on paired practice games.
+- `scripts/arena-export.py` mirrors the arena's public game export and
+  flattens it to one line per hand; `examples/field.rs` replays each hand
+  through the real rules as its seats' views and fails on any divergence.
+  Stage 0 of a clone of the site's field (docs/arena-gap.md, P5), to
+  stand in for the field locally and then for the rollouts' opponents:
+  all 56,300 exported games (525,603 hands) replay with no divergence.
 - Measure an anti-feed pass for the arena entry (docs/arena-gap.md, P1):
   a `pass_score` penalty on queens, kings, aces and T♥/J♥, at `mc:1024`
   win-only against three `mc:128`, 2000 game blocks, seed 21, paired.

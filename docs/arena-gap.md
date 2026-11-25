@@ -11,8 +11,12 @@ finding larger than either: we start a shot on 5.4% of hands and land
 about one in five.  P1 (the anti-feed pass, re-priced against a
 field that shoots) is a measured null.  P2's calibration is measured
 too: the rollouts' moon share says nothing about a shot's chances here
-until it is unanimous, so the arena build's bar moves to 100% if the
-local price holds (two A/Bs queued).  Siblings:
+until it is unanimous — but the unanimous bar lost `win` by 12.9 SE
+against the local field, which cannot price it.  That is the second
+proposal to die on the instrument rather than on its merits, so the
+campaign turns to P5: a clone of the site's field, cut from its public
+games, to stand in for the field locally and then for the opponents in
+the rollouts.  Siblings:
 [cfr-gap.md](cfr-gap.md), whose closed proposals this doc re-reads under
 a different gate, and [passing-shape.md](passing-shape.md).
 
@@ -124,6 +128,11 @@ rating (2320 → 2327).
 
 - **Site games** — the export above.  Free, exact, and the only
   measurement of the real field; it sees outcomes, not our intentions.
+- **`scripts/arena-export.py`** — mirrors that export (`fetch`,
+  resumable, a request a second), flattens it to one line per hand
+  (`hands`) for `examples/field.rs` to replay through the real rules, and
+  tabulates what each bot burns (`fuel`): fuel is metered per seat and
+  public on every play, so it shows who searches.
 - **`scripts/arena-census.py`** — replays our seat's public transcript
   through the arena wasm and reads the `shoot M/N` line `arena/` now
   prints on stderr (the shot completed in M of N sampled worlds).  It
@@ -146,9 +155,10 @@ rating (2320 → 2327).
 | --- | --- | --- | --- |
 | P0 | attempt census on site games | `arena/` stderr + a script | measured on 1,500 games |
 | P1 | anti-feed pass, priced against shooters | pass policy | null (2026-11-25); knob deleted |
-| P2 | the moon bar against real defenders | selection rule | calibrated; unanimous bar built, local price queued |
+| P2 | the moon bar against real defenders | selection rule | calibrated; unanimous bar fails the local gate (`win` −12.9 SE), unpriced on the site |
 | P3 | closing the last hand | win-only payoff | unbuilt |
 | P4 | paired practice games | instrument | needs the owner's leave |
+| P5 | a clone of the field | instrument, then rollout opponents | stage 0 passed (2026-11-25); stage 1 waits on the owner |
 
 ### P0 — attempt census
 
@@ -263,7 +273,8 @@ are ordered by what each can be measured with:
 3. **Check it where it can be checked**: locally it must not lose `win`
    by more than 2 SE against the `mc:128` field (it will give up cheap
    moons there; the point is to bound the price), and on the site by
-   P4's practice games or the next version's census.  Queued.
+   P4's practice games or the next version's census.  Local check
+   failed (below); the site check waits on P4.
 
 #### Calibration (2026-11-25)
 
@@ -349,6 +360,25 @@ site's gain has to cover, and the greedy leg is the softest field and
 so the worst case for that price.  Worse than −2 SE: weigh the measured
 local loss against the census's four points a game before deciding.
 
+**Result (2026-11-25): fails, by far.**  `bar=1 − baseline`, paired:
+
+| | against three `mc:128` | against three `greedy` |
+| --- | --- | --- |
+| `win` | −0.0574 ± 0.0044 (−12.9 SE) | −0.0336 ± 0.0040 (−8.4 SE) |
+| `rank` | −0.1323 ± 0.0109 (−12.2 SE) | −0.0390 ± 0.0070 (−5.6 SE) |
+| `not-last` | −0.0262 ± 0.0041 (−6.4 SE) | +0.0005 ± 0.0019 (+0.3 SE) |
+| `points` | −0.540 ± 0.039 (−13.7 SE) | −0.527 ± 0.028 (−18.9 SE) |
+| `moons` | −0.0276 ± 0.0009 | −0.0297 ± 0.0008 |
+
+Half the moons go, and with them about 4.7 points a game against the
+`mc:128` field (8.7 rounds a game).  The weighing does not clear it.
+The census's four points count each refused shot against nothing; those
+hands played straight are high-card hands and score something, which
+leaves perhaps 2.5–3.5 points a game, the same size as a local price
+that is itself inflated by soft defenders.  Neither instrument can
+settle a change this large, and a new version resets the rating, so
+`arena/` does not set the bar and the site check moves to P4.
+
 The deeper fix is rollout defenders that play like this field, which is
 the walled-off opponent-modeling prior.  It stays walled off until step 1
 says the bar alone cannot do the job.
@@ -370,10 +400,109 @@ leave, a throttle, and a look at how long a queued practice game takes.
 The first use would be P1's recipient ratio and P0's completion rate on
 a few hundred seeds, not a win rate.
 
+### P5 — a clone of the field
+
+**Why.**  P1 and P2 were both priced against `mc:128`, a field that lets
+seven shots in ten through where the site lets two.  A third moon rule
+would meet the same instrument.  And the authors' own descriptions
+(`GET /api/bots/<name>`) put a ceiling on this design:
+
+| bot | rating (2026-11-25) | what its author says |
+| --- | ---: | --- |
+| Ava v3 | 2562 | no method given |
+| Brooke v2 | 2422 | 415k-parameter residual MLP distilled from Ava |
+| Moonwarden v4 | 2410 | determinized search like ours, a learned pass, a rule-based shot |
+| Nightjar v1 | 2385 | determinized search, fast heuristic rollouts, match-win payoff — this design |
+| Cleo v2 | 2379 | 90k-parameter residual MLP |
+| `rusty-hearts` v2 | 2360 | 1024 worlds over the greedy rollout |
+
+A 90k-parameter network with no search outrates 1024 worlds over a weak
+rollout policy, and the bot built exactly like ours sits 25 points up.
+More worlds are measured flat past 512.  What is left to improve is who
+the rollouts think they are playing against, which is also what the
+census found: defenders too soft by a factor of three.
+
+**What.**  One artifact with two uses.  A small pass-and-play network
+fitted to the strong bots' recorded decisions — about 56,000 games,
+every hand face up, roughly 28 million plays and 1.6 million passes,
+growing by some 4,000 games a day — is first the local arena's field and
+then the opponents in the rollouts.  The second use is the opponent
+model this doc kept walled off until the bar alone had failed.  It has.
+
+| stage | step | gate |
+| --- | --- | --- |
+| 0 | mirror the export; replay every hand through the real rules as each seat's `View` | no hand diverges |
+| 1 | fit the clone | `rusty-hearts` v2 against three clones reproduces the site: about 21% of its shots land (not 70%), and it wins about 22% |
+| 2 | clones as the arena field; re-price P1 and P2's bar | the usual `win` gate |
+| 3 | the clone as the rollouts' opponents | `win` against the clone field |
+| 4 | confirm on the site (P4), then upload v3 | site win rate |
+
+**Why this is not ordinary-play's P2 again.**  That distilled rollout
+imitated our own search at its own positions and came back null on
+`rank` with softer defenders (`moons` +5.9 SE).  This one imitates bots
+that do stop moons — opponents shoot 0.84 times their usual rate at
+Ava's table — and stage 1's gate is a moon statistic, so a clone with
+soft defenders fails before anything is built on it.
+
+**Costs and risks.**
+
+- *Fuel.*  A 90k-parameter network is about 90k multiply-adds an
+  evaluation; as the rollouts' opponents that is an estimated 2.5 times
+  today's cost a world, so some 400 worlds in the present budget.  Not
+  measured; the Governor's prices are re-measured at stage 3.  The module
+  limit is 16 MiB and such a network is under 2 MiB.
+- *Circularity.*  With one clone as both field and rollout model, the
+  rollouts know their opponents exactly and the local A/B flatters them.
+  The two are fitted on disjoint halves of the games, and the site has
+  the last word (stage 4).
+- *Rare positions.*  Moon defence is a small share of the decisions and
+  the share that matters.  Stage 1's gate is what catches it.
+- *Etiquette.*  The export is public and documented for scripts, and
+  stage 0 only reads it.  Fitting a model to other authors' bots is a
+  further step: stage 1 waits on the owner's answer, asked with P4's.
+
+**Expectation, not measurement.**  Stages 1–2 could bring the entry to
+the Nightjar–Moonwarden level by pricing the moon rules honestly.  Stage
+3 is the bet, and the only route in this doc past 2450.  It does not
+catch Ava: a clone stays below what it copies, and search on top
+recovers part of the difference.
+
+**Stage 0: passed (2026-11-25).**
+
+```console
+scripts/arena-export.py fetch ab-results/arena-export
+scripts/arena-export.py hands ab-results/arena-export \
+    | cargo run --release --example field
+scripts/arena-export.py fuel ab-results/arena-export
+```
+
+All 56,300 games through game 56,301 (525,603 hands, 1.66 million
+passes and 27.3 million plays) replay through the real rules with no
+divergence; no forfeited game was left out.
+
+The fuel table, as a share of the per-hand pool (mean over hands, worst
+hand):
+
+| bot | mean | worst |
+| --- | ---: | ---: |
+| Wren v3–v5 | 92–96% | 97–99% |
+| Moonbreaker, Moonwarden v2–v4, Nightjar | 60–69% | 84–92% |
+| Chui | 33% | 54% |
+| `rusty-hearts` v1, v2 | 23% | 76%, 88% |
+| Tafuta | 8% | 59% |
+| Kivuli, Deep-CFR, Killer-Hearts, Ava, Brooke, Cleo | ≤ 3% | ≤ 3.3% |
+
+The field splits as the authors say: the searchers spend most of the
+pool, the learned policies (Ava, Brooke, Cleo, the CFR bots) almost
+none.  We spend under a quarter on the mean hand, so stage 3's
+estimated 2.5× cost a world has room beside the worst hand's 88%,
+which the Governor already caps.
+
 ## Sequencing
 
 P0 → P2's calibration step (cheap, and the bigger leak) beside P1's two
-screens → confirm or delete P1 → P2's rule (here now: read the two
-`bar1` runs) → P3.  P4 runs beside them once allowed.  A new version resets the site
+screens → confirm or delete P1 → P2's rule (failed locally, 2026-11-25)
+→ P5 stage 0 (passed) → the owner's leave for P4 and for stage 1 (here now) →
+P5 stages 1–3 → P4 as the confirm → P3.  A new version resets the site
 rating and takes about a thousand games to settle, so changes are batched:
-nothing is re-uploaded until P1 and P2 both have verdicts.
+nothing is re-uploaded before P5 stage 4.
