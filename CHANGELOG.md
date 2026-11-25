@@ -98,6 +98,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the rollouts: all 56,300 exported games (525,603 hands) replay with
   no divergence.  The earlier plan to clone the field from other bots'
   recorded decisions is dropped: the site keeps bot modules private.
+- `scripts/arena-export.py targets BOT:VERSION` tabulates a bot's pooled
+  outcomes from those lines, SEs clustered on games (P5 stage 1).  Over
+  `rusty-hearts` v2's 6,457 games: `win` 0.213 ± 0.005, own moons
+  0.0147 ± 0.0005 a hand, 0.0401 ± 0.0004 per opposing seat — against
+  0.280, 0.056 and 0.055 for the same build among three `mc:128`.
+- `MonteCarloBot::moon_defense` and `MonteCarloBot::rollout_defense`
+  expose the 8-point moon-defence trigger, for the live play and for the
+  defenders of a shoot world; arena spec `mc:N,def=P,rdef=P`.  Defaults
+  unchanged; measurement knobs for calibrating the local field (P5
+  stage 2).
 - Measure an anti-feed pass for the arena entry (docs/arena-gap.md, P1):
   a `pass_score` penalty on queens, kings, aces and T♥/J♥, at `mc:1024`
   win-only against three `mc:128`, 2000 game blocks, seed 21, paired.

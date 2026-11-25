@@ -157,7 +157,7 @@ rating (2320 → 2327).
 | P2 | the moon bar against real defenders | selection rule | calibrated; unanimous bar fails the local gate (`win` −12.9 SE), unpriced on the site |
 | P3 | closing the last hand | win-only payoff | unbuilt |
 | P4 | paired practice games | instrument | needs the owner's leave |
-| P5 | calibrated defenders | instrument, then rollout defenders | stage 0 passed (2026-11-25); clone dropped, stage 1 next |
+| P5 | calibrated defenders | instrument, then rollout defenders | stages 0–1 done (2026-11-26); stage 2 sweep queued |
 
 ### P0 — attempt census
 
@@ -499,11 +499,70 @@ none.  We spend under a quarter on the mean hand (88% on the worst,
 which the Governor caps), so the budget is not what holds the entry
 back.
 
+**Stage 1: the targets (2026-11-26).**
+
+```console
+scripts/arena-export.py hands ab-results/arena-export > hands.txt
+scripts/arena-export.py targets RUSTY-HEARTS:2 < hands.txt
+```
+
+All 6,457 v2 games in the mirror at tables with no house bot (61,443
+hands); rates are ratios of per-game sums, SE clustered on games.  The
+two shot rows are the census's 1,500 games with binomial SEs.  The local
+column is the baseline row of P2's `bar1-mcfield` run: the same build
+against three `mc:128`, 2,000 game blocks.
+
+| | site | local, three `mc:128` |
+| --- | ---: | ---: |
+| `win` (1/k on a k-way tie) | 0.213 ± 0.005 | 0.280 ± 0.005 |
+| own moons per hand | 0.0147 ± 0.0005 | 0.056 ± 0.001 |
+| moons per opposing seat per hand | 0.0401 ± 0.0004 | 0.055 ± 0.001 |
+| … passing hands | 0.0448 ± 0.0005 | |
+| … hold hands | 0.0221 ± 0.0007 | |
+| shots started, per hand | 0.054 ± 0.002 | unmeasured |
+| shots landed, per shot | 0.210 ± 0.014 | about 0.7 |
+| points per plain hand | 6.02 ± 0.03 | |
+| hands per game | 9.52 ± 0.03 | 8.74 |
+
+Two things the table says before any sweep.  The local field is wrong in
+both directions the trigger moves: it lets our shots through (own moons
+3.8 times the site's) *and* shoots more itself than the site's field does
+against us (0.055 a seat against 0.040), so a harder defence in the field
+alone would fix the first and leave the second, which is our own live
+defence at work and already the board's best.  And the win target is
+0.213, not 0.25: the calibrated field has to be stronger than `mc:128`
+at ordinary play too, which no moon knob supplies — stage 2 matches the
+moon rows and reports whatever `win` comes out.
+
+**Stage 2: the trigger sweep (queued 2026-11-26).**  The trigger is now
+two `MonteCarloBot` knobs, both 8 by default: `moon_defense` (the live
+play; arena spec `def=N`) and `rollout_defense` (the defenders of a shoot
+world; `rdef=N`).  The sweep moves the field's live trigger only and
+needs no new column: with three identical opponents the `moons` rows are
+our moons and the moons against us, a seat.
+
+```console
+for d in 1 2 4 6; do
+    scripts/queue-ab.sh field-def$d --games 500 --seed 21 \
+        mc:1024,win=true mc:128,def=$d mc:128,def=$d mc:128,def=$d
+done
+```
+
+500 game blocks resolve `moons` to about ±0.002, against a gap of 0.041.
+`def=8` is the local column above (same seed, 2,000 blocks).
+
+**Gate.**  Some trigger puts our `moons` within 2 SE of 0.0147.  Then
+that field is the instrument for stage 3, with its `win` and the field's
+own moon rate (target 0.040 a seat) reported beside it.  If `def=1`
+still leaves us above about 0.03, the trigger is too small a knob: build
+the stopper knob, as planned.  Shots started and landed stay uncounted
+locally unless the moon rows match and the split is needed.
+
 ## Sequencing
 
 P0 → P2's calibration step (cheap, and the bigger leak) beside P1's two
 screens → confirm or delete P1 → P2's rule (failed locally, 2026-11-25)
-→ P5 stage 0 (passed) → P5 stages 1–4 (stage 1 here now) → P4, with
+→ P5 stages 0–1 (done) → P5 stages 2–4 (stage 2 here now) → P4, with
 the owner's leave, as the confirm → P3.  A new version resets the site
 rating and takes about a thousand games to settle, so changes are batched:
 nothing is re-uploaded before P5 stage 5.

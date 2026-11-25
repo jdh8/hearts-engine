@@ -9,6 +9,7 @@ replays each hand through the real rules.
     scripts/arena-export.py fetch DIR     # resumable; one request a second
     scripts/arena-export.py hands DIR     # one line per hand, on stdout
     scripts/arena-export.py fuel  DIR     # what each bot burns per hand
+    scripts/arena-export.py targets BOT:VERSION < hands   # its pooled outcomes
 
 DIR holds `pages/FIRSTID.json.gz` (full pages, never refetched), `tail.json.gz`
 (the last, partial page, refetched every run) and `cursor`.  A hand's line is
@@ -148,13 +149,66 @@ def fuel(args):
         print(f"{bot:<24}{count:>8}{total / count / pool:>12.2%}{hand / pool:>12.2%}{play / pool:>12.2%}")
 
 
+HOUSE = {"lowball", "ducker", "highball", "dumper", "random"}
+
+
+def targets(args):
+    """What a local field has to reproduce: BOT's pooled outcomes at tables
+    with no house bot, from `hands` lines on stdin.  Rates are ratios of
+    per-game sums, with the standard error clustered on games."""
+    table = {}  # game -> per-game sums, by column name
+    for line in sys.stdin:
+        f = line.split()
+        bots, points, shooter = f[3:7], [int(x) for x in f[20:24]], f[24]
+        if args.bot not in bots or HOUSE & {bot.split(":")[0].lower() for bot in bots}:
+            continue
+        me = bots.index(args.bot)
+        game = table.setdefault(f[0], dict.fromkeys(COLUMNS, 0))
+        final = [int(a) + b for a, b in zip(f[7:11], points)]
+        game["games"], game["hands"] = 1, game["hands"] + 1
+        game["win"] = (final[me] == min(final)) / final.count(min(final))  # last line wins
+        kind = "hold" if f[2] == "hold" else "pass"
+        game[f"{kind} hands"] += 1
+        if shooter == "-":
+            game["plain hands"] += 1
+            game["plain points"] += points[me]
+        else:
+            who = "own" if int(shooter) == me else "against"
+            game[f"moons {who}"] += 1
+            game[f"{kind} moons {who}"] += 1
+
+    def rate(label, top, bottom, scale=1.0):
+        pairs = [(game[top], game[bottom]) for game in table.values()]
+        total = sum(n for _, n in pairs)
+        r = sum(x for x, _ in pairs) / total
+        se = (len(pairs) / (len(pairs) - 1) * sum((x - r * n) ** 2 for x, n in pairs)) ** 0.5 / total
+        print(f"{label:<44}{r * scale:>9.4f} ± {se * scale:.4f}")
+
+    print(f"{args.bot}: {len(table)} games, {sum(game['hands'] for game in table.values())} hands, no house bot")
+    rate("win (1/k on a k-way tie)", "win", "games")
+    rate("hands per game", "hands", "games")
+    rate("points per plain hand", "plain points", "plain hands")
+    rate("own moons per hand", "moons own", "hands")
+    rate("  passing hands", "pass moons own", "pass hands")
+    rate("  hold hands", "hold moons own", "hold hands")
+    rate("moons per opposing seat per hand", "moons against", "hands", 1 / 3)
+    rate("  passing hands", "pass moons against", "pass hands", 1 / 3)
+    rate("  hold hands", "hold moons against", "hold hands", 1 / 3)
+
+
+COLUMNS = ["games", "hands", "win", "pass hands", "hold hands", "plain hands", "plain points"] + [
+    f"{kind}moons {who}" for kind in ("", "pass ", "hold ") for who in ("own", "against")
+]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("fetch", "hands", "fuel"):
         commands.add_parser(name).add_argument("dir")
+    commands.add_parser("targets").add_argument("bot")
     args = parser.parse_args()
-    {"fetch": fetch, "hands": hands, "fuel": fuel}[args.command](args)
+    {"fetch": fetch, "hands": hands, "fuel": fuel, "targets": targets}[args.command](args)
 
 
 if __name__ == "__main__":

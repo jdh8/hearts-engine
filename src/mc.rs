@@ -59,7 +59,7 @@ enum Choice {
 impl Choice {
     /// Apply the move to a world and play it out: greedily, or with `me`
     /// shooting the moon against a table that defends.
-    fn roll(self, round: &mut Round, me: Seat, shoot: bool) -> RoundResult {
+    fn roll(self, round: &mut Round, me: Seat, shoot: bool, trigger: u8) -> RoundResult {
         match self {
             Self::Pass(cards) => round
                 .pass(me, cards.into_iter().collect())
@@ -70,7 +70,7 @@ impl Choice {
         }
         let mut played = round.played();
         while let Some(seat) = round.turn() {
-            let card = rollout_play(round, seat, shoot.then_some(me), played);
+            let card = rollout_play(round, seat, shoot.then_some(me), played, trigger);
             round
                 .play(seat, card)
                 .expect("the rollout policy picks from legal_plays");
@@ -135,6 +135,10 @@ pub struct MonteCarloBot<R: Rng> {
     moon_passes: u32,
     moon_share: (u32, u32),
     moon_bar: f64,
+    /// Sole-sweeper points at which the live play, and the defenders of a
+    /// shoot world, stop ducking.
+    moon_defense: u8,
+    rollout_defense: u8,
 }
 
 /// One candidate action's Monte Carlo assessment, for a solver or hint view
@@ -187,6 +191,8 @@ impl<R: Rng> MonteCarloBot<R> {
             moon_attempts: 0,
             moon_passes: 0,
             moon_share: (0, 0),
+            moon_defense: 8,
+            rollout_defense: 8,
         }
     }
 
@@ -227,6 +233,28 @@ impl<R: Rng> MonteCarloBot<R> {
     #[must_use]
     pub const fn moon_bar(mut self, bar: f64) -> Self {
         self.moon_bar = bar;
+        self
+    }
+
+    /// Set the points a sole sweeper must hold before the bot's live play
+    /// stops ducking and takes a trick from them
+    ///
+    /// The default is 8, [`HeuristicConfig::moon_defense`]'s.  Lower is a
+    /// harder table to shoot against.
+    #[must_use]
+    pub const fn moon_defense(mut self, points: u8) -> Self {
+        self.moon_defense = points;
+        self
+    }
+
+    /// Set the same trigger for the defenders the bot imagines when it
+    /// rolls out its own moon shot
+    ///
+    /// The default is 8.  Lower prices a shot against a table that defends
+    /// earlier than the bot itself does.
+    #[must_use]
+    pub const fn rollout_defense(mut self, points: u8) -> Self {
+        self.rollout_defense = points;
         self
     }
 
@@ -536,6 +564,7 @@ impl<R: Rng> MonteCarloBot<R> {
                 candidates,
                 self.gate,
                 self.win_only,
+                self.rollout_defense,
                 &mut scored,
                 &mut alive,
             );
@@ -571,8 +600,8 @@ impl<R: Rng> MonteCarloBot<R> {
         // Reactive moon defense: the rollout policy models every opponent as
         // a greedy ducker who never shoots the moon, so the search is blind
         // to a moon in progress.  Break it with the same overlay HeuristicBot
-        // uses (threshold 8, its default).
-        if let Some(card) = moon_defense(view, 8) {
+        // uses.
+        if let Some(card) = moon_defense(view, self.moon_defense) {
             return Some((card, false));
         }
         let trick = view.current_trick()?;
@@ -881,12 +910,14 @@ fn play_candidates(view: &View<'_>) -> Vec<Candidate> {
 /// the shorter slice, so [`recommended`] rejects it with no special
 /// casing.  Each serial evaluator or parallel worker reuses a scratch
 /// [`Round`], whose `clone_from` retains the completed-trick allocation.
+#[expect(clippy::too_many_arguments, reason = "one private call site")]
 fn score_worlds(
     view: &View<'_>,
     worlds: &[Round],
     candidates: &[Candidate],
     gate: f64,
     win_only: bool,
+    trigger: u8,
     scored: &mut [Scored],
     alive: &mut Vec<usize>,
 ) {
@@ -895,7 +926,7 @@ fn score_worlds(
     let standing = absolute_standing(me, view.game_scores());
     let eval = |candidate: &Candidate, world: &Round, scratch: &mut Round| {
         scratch.clone_from(world);
-        let result = candidate.choice.roll(scratch, me, candidate.shoot);
+        let result = candidate.choice.roll(scratch, me, candidate.shoot, trigger);
         let moon = u32::from(result.shooter() == Some(me));
         let scores = result.scores(rules);
         (
@@ -2037,7 +2068,7 @@ mod tests {
         let ace = Choice::Play(card("A♣"));
         let mut continuation = round.clone();
         assert_eq!(
-            ace.roll(&mut continuation, Seat::North, true).shooter(),
+            ace.roll(&mut continuation, Seat::North, true, 8).shooter(),
             Some(Seat::North),
             "the shooting continuation takes all thirteen tricks",
         );

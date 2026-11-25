@@ -462,9 +462,9 @@ pub(crate) fn shoot_play(legal: Hand, trick: Trick, played: Hand) -> Card {
 ///
 /// `shooter`, when set, is the seat whose moon the world is testing: it
 /// plays [`shoot_play`] for as long as the shot is alive, and the other
-/// three stop ducking once the shooter holds the live table's eight
-/// points and is winning the trick — the same trigger [`HeuristicBot`]'s
-/// moon-defense overlay fires on.  Defending from trick 1 prices every
+/// three stop ducking once the shooter holds `trigger` points (the live
+/// table's eight by default) and is winning the trick — the same trigger
+/// [`HeuristicBot`]'s moon-defense overlay fires on.  Defending from trick 1 prices every
 /// shot against a table no real opponent fields, while greedy duckers
 /// with no trigger at all would make every moon look like a laydown.
 ///
@@ -476,6 +476,7 @@ pub(crate) fn rollout_play(
     seat: Seat,
     shooter: Option<Seat>,
     played: Hand,
+    trigger: u8,
 ) -> Card {
     let legal = round.legal_plays(seat);
     let trick = round.current_trick().expect("a playing round has a trick");
@@ -493,7 +494,7 @@ pub(crate) fn rollout_play(
             return shoot_play(legal, trick, played);
         }
         if trick.winner() == Some(shooter)
-            && round.points_taken(shooter) >= HeuristicConfig::default().moon_defense
+            && round.points_taken(shooter) >= trigger
             && let Some(card) = beat_threat(legal, trick)
         {
             return card;

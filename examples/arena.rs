@@ -218,6 +218,7 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
             let mut pass = HeuristicConfig::default();
             let mut win_only = false;
             let mut bar = 0.5;
+            let (mut def, mut rdef) = (8, 8);
             for (index, knob) in suffix
                 .unwrap_or_default()
                 .split(',')
@@ -236,9 +237,13 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
                     ),
                     Some(("win", value)) => win_only = value.parse()?,
                     Some(("bar", value)) => bar = value.parse()?,
+                    Some(("def", value)) => def = value.parse()?,
+                    Some(("rdef", value)) => rdef = value.parse()?,
                     Some((key, value)) => {
                         if !pass_knob(&mut pass, key, value)? {
-                            bail!("unknown mc knob {key:?} in {spec:?} (win, bar, {PASS_KNOBS})");
+                            bail!(
+                                "unknown mc knob {key:?} in {spec:?} (win, bar, def, rdef, {PASS_KNOBS})"
+                            );
                         }
                     }
                 }
@@ -249,6 +254,8 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
                     .samples(samples)
                     .win_only(win_only)
                     .moon_bar(bar)
+                    .moon_defense(def)
+                    .rollout_defense(rdef)
                     .pass_model(pass),
             ))
         }
