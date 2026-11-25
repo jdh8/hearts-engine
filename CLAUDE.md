@@ -42,6 +42,14 @@ what they removed:
   along a completing suit and a triple that finishes a void beats three
   that start three.  `pass_key` is `(pass_score, danger, rank)` and is
   injective over a hand — no tie ever falls to iteration order.
+  Off by default behind `loser_weight`: the loser-aware pass term.  Also
+  here, off by default: `stopper_defense` (knowledge-free, shared by the
+  live overlay and shoot-world defenders through `defend`) and `suspect`
+  (lead signs, live only).
+- `src/shape.rs` — the suit-shape vocabulary those read (outstanding
+  cards, top run, winners, ducking cards, exposure, stoppers), the
+  derived expected-rounds table, and the shooter's pass with its shape
+  gate.  Two `Holding`s in, nothing hidden.
 - `src/mc.rs` — `MonteCarloBot`: `sample_hands` (randomized
   most-constrained-first backtracking under voids/known/capacities, softly
   weighted by the known giver's pass),

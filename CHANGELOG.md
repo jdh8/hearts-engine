@@ -30,6 +30,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its seat chose.  The terminal and web hints use them: playing the flagged
   shot keeps the plan for the next hint, and any other card drops it.
 
+- Four behaviours from [docs/clean-room-spec.md](docs/clean-room-spec.md),
+  each behind its own knob, all off by default and none priced yet (see
+  arena-gap P6).  With every knob at its default a seeded arena CSV is
+  byte-identical to the previous build.
+  - `HeuristicConfig::loser_weight` (arena `loser=W`, both bot specs): a
+    loser-aware pass.  A side-suit card that is not a sure duck is scored
+    by how exposed its suit is, high hearts over four or more are kept as
+    guards, and a club void counts for less than a diamond one.  On
+    200,000 random hands it carries 1.87 A/K/Q a pass against 2.19.
+  - `MonteCarloBot::shot_shape` (`shape=N`): the pass-time moon shot is
+    the pass a shooter would make, offered to the search only when the
+    ten cards kept hold at most `N` non-winners and no losing heart.
+  - `MonteCarloBot::stoppers` and `rollout_stoppers` (`stop=BOOL`,
+    `rstop=BOOL`): a stopper-keeping defense for the live play and for
+    the defenders of a shoot world, on from the existing trigger points.
+  - `MonteCarloBot::suspicion` (`sus=MASK`): four lead signs, one bit
+    each, that start the live defense before points do.
+
 ### Changed
 
 - `MonteCarloBot` prices a rollout that does not end the game at `0.5`

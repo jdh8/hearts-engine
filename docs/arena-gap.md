@@ -158,6 +158,7 @@ rating (2320 → 2327).
 | P3 | closing the last hand | win-only payoff | unbuilt |
 | P4 | paired practice games | instrument | needs the owner's leave |
 | P5 | calibrated defenders | instrument, then rollout defenders | stages 0–1 done (2026-11-26); stage 2 sweep queued |
+| P6 | clean-room behaviours B1–B4 | pass policy, shot gate, defenders | built 2026-11-26, all off; unpriced |
 
 ### P0 — attempt census
 
@@ -557,6 +558,82 @@ own moon rate (target 0.040 a seat) reported beside it.  If `def=1`
 still leaves us above about 0.03, the trigger is too small a knob: build
 the stopper knob, as planned.  Shots started and landed stay uncounted
 locally unless the moon rows match and the split is needed.
+
+### P6 — the clean-room behaviours
+
+Built from [clean-room-spec.md](clean-room-spec.md) and this repository
+alone (2026-11-26).  Each is off by default; with all of them off a
+seeded arena CSV is byte-identical to the build before.
+
+| | key | what it turns on |
+| --- | --- | --- |
+| B1 | `loser=W` (pass knob, both specs) | the loser-aware pass term, weight `W` |
+| B2 | `shape=N` | the shooter's pass, offered only if it keeps ≤ `N` non-winners and no losing heart |
+| B3 | `stop=true`, `rstop=true` | stopper-keeping defence, live / shoot-world defenders |
+| B4 | `sus=MASK` | lead signs: 1 boss heart, 2 spade honour, 4 solo suit, 8 queen taken |
+| B5 | — | not built (the spec marks it optional and last) |
+
+**Numbers derived, and how.**
+
+- *Expected rounds*: the exact mean of the longest of three opponents'
+  holdings when `n` outstanding cards fall at random among 39 (a `const`
+  table in `src/shape.rs`): 1, 1.32, 1.84, … 5.9 at thirteen.
+- *Ducking card*: at most two outstanding cards under it (three opponents
+  cannot all play lower), and more than `3k` above the `k`-th duck (each
+  duck spent costs a round of up to three cards).
+- *Exposure*: a suit's non-ducking cards less its ducking cards, signed.
+- *Long hearts*: four or more — nine outstanding average three a hand.
+- *High heart* (B4): an honour, J or better.
+
+**Readings chosen where the spec left room.**
+
+- B1 scores a non-ducking side-suit card `W × exposure − length`; the
+  length term is "shorter suits first".  A club suit counts one longer
+  for the void bonus.  The top card of long hearts scores one rank under
+  the second-highest.
+- B2's gate *withholds* the candidate (simpler than offering it barred),
+  and a hand that passes still faces the significance gate and the moon
+  bar.  It gates the pass-time shot only; a shot started in play is
+  untouched.
+- B3's "certain stopper" is the heart no outstanding heart beats; it is
+  kept and everything else is played by the ordinary policy.  "A suit
+  where some other opponent is forced to win" collapses into "a suit the
+  shooter is void in": from legal knowledge nobody else is *forced* to
+  win unless the shooter cannot follow.  A point trick is taken before
+  the shooter has played only with a card nothing outstanding beats.
+  Live, these plays pre-empt the search, as the trigger defence does.
+- B4's "early" is "while the Q♠ is at large"; "deliberately" is "the
+  winning card was played after the queen".  The latest sign names the
+  suspect.  Live only: the rollouts' defenders have `rdef` for that.
+
+**Census** (`cargo test --release --lib pass_census -- --ignored
+--nocapture`, 200,000 hands): the pass carries 2.19 A/K/Q at `loser=0`
+and 1.85–1.89 at any weight from 1 to 6, so the weight barely matters
+and 2 is as good a first value as any.  The shape gate opens on 0.02%,
+0.08%, 0.24%, 0.50%, 0.85% and 1.5% of hands at `shape=0…5`, against
+shots we start on about 5% of hands today and land on 1.5%: sweep the
+loose end.
+
+**To price** (after P5 stage 2 names the field; `mc:128` stands in
+here), one behaviour a run:
+
+```console
+F="mc:128 mc:128 mc:128"; B="mc:1024,win=true"
+scripts/queue-ab.sh b1-loser2 --games 2000 --seed 21 --ab $B,loser=2 $B $F
+scripts/queue-ab.sh b2-shape3 --games 2000 --seed 21 --ab $B,shape=3 $B $F
+scripts/queue-ab.sh b2-shape5 --games 2000 --seed 21 --ab $B,shape=5 $B $F
+scripts/queue-ab.sh b3-rstop  --games 2000 --seed 21 --ab $B,rstop=true $B $F
+scripts/queue-ab.sh b3-stop   --games 2000 --seed 21 --ab $B,stop=true $B $F
+for m in 1 2 4 8; do
+    scripts/queue-ab.sh b4-sus$m --games 2000 --seed 21 --ab $B,sus=$m $B $F
+done
+```
+
+B3 is also P5's second knob: `mc:128,stop=true` in the field slots is
+the sweep to run if no trigger reaches the stage 2 gate.  A 150-deal
+smoke run of `stop=true` (not a verdict) read `points` +2.0 SE and
+`win` −3.3 SE, the direction to expect of a defence that takes point
+tricks: watch `win`.
 
 ## Sequencing
 

@@ -7,6 +7,7 @@ mod driver;
 mod heuristic;
 #[cfg(feature = "rand")]
 mod mc;
+mod shape;
 mod strategy;
 mod view;
 

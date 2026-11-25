@@ -64,11 +64,17 @@ fn usage() {
         "Usage: arena [--blocks N | --games N] [--seed N] [--ab SPEC] [--csv] [BOT BOT BOT BOT]\n\
          BOT is greedy[:V,H,G[,knob=value...]], newbie or mc[:samples[,knob=value...]].\n\
          greedy:V,H,G sets void_weight,heart_weight,spade_guards positionally;\n\
-         both specs then take named pass knobs void/heart/guards/two/insure,\n\
-         two being the flat bonus for passing the forced 2♣ lead and insure\n\
-         the malus on spades below a queen the hand lacks.\n\
+         both specs then take named pass knobs void/heart/guards/two/insure/loser,\n\
+         two being the flat bonus for passing the forced 2♣ lead, insure\n\
+         the malus on spades below a queen the hand lacks, and loser the\n\
+         weight of the loser-aware term (0 = off).\n\
          mc's knobs set the pass model the search ranks, samples its rollout\n\
-         opponents, and reads the incoming pass with.\n\
+         opponents, and reads the incoming pass with.  mc also takes win=BOOL,\n\
+         bar=X, def=N and rdef=N (live and rollout moon-defense triggers),\n\
+         stop=BOOL and rstop=BOOL (stopper-keeping defense, live and rollout),\n\
+         sus=MASK (lead signs that start the live defense: 1 boss heart,\n\
+         2 spade honour, 4 solo suit, 8 queen taken) and shape=N (offer the\n\
+         pass-time shot only when it keeps at most N non-winners).\n\
          N counts blocks, each one deal (or game seed) played four times rotated.\n\
          --ab reruns the same blocks with SPEC in slot 1 and reports the paired delta.\n\
          --csv writes one row per block per bot instead of the summary."
@@ -122,7 +128,7 @@ fn parse_args() -> Result<Option<Config>> {
 /// Build one bot, seeded so its search noise is a function of the deal and
 /// its slot alone — never of the deal stream or of who else is at the table.
 /// The named pass knobs both bot specs accept, for their error messages.
-const PASS_KNOBS: &str = "void/heart/guards/two/insure";
+const PASS_KNOBS: &str = "void/heart/guards/two/insure/loser";
 
 /// Apply one `knob=value` pass setting, or report the key as unknown so the
 /// caller can name its own spec in the error
@@ -137,6 +143,7 @@ fn pass_knob(config: &mut HeuristicConfig, key: &str, value: &str) -> Result<boo
         "guards" => config.spade_guards = value.parse()?,
         "two" => config.two_of_clubs_bonus = value.parse()?,
         "insure" => config.queen_insurance = value.parse()?,
+        "loser" => config.loser_weight = value.parse()?,
         _ => return Ok(false),
     }
     Ok(true)
@@ -219,6 +226,9 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
             let mut win_only = false;
             let mut bar = 0.5;
             let (mut def, mut rdef) = (8, 8);
+            let (mut stop, mut rstop) = (false, false);
+            let mut sus = 0;
+            let mut shape = None;
             for (index, knob) in suffix
                 .unwrap_or_default()
                 .split(',')
@@ -239,10 +249,14 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
                     Some(("bar", value)) => bar = value.parse()?,
                     Some(("def", value)) => def = value.parse()?,
                     Some(("rdef", value)) => rdef = value.parse()?,
+                    Some(("stop", value)) => stop = value.parse()?,
+                    Some(("rstop", value)) => rstop = value.parse()?,
+                    Some(("sus", value)) => sus = value.parse()?,
+                    Some(("shape", value)) => shape = Some(value.parse()?),
                     Some((key, value)) => {
                         if !pass_knob(&mut pass, key, value)? {
                             bail!(
-                                "unknown mc knob {key:?} in {spec:?} (win, bar, def, rdef, {PASS_KNOBS})"
+                                "unknown mc knob {key:?} in {spec:?} (win, bar, def, rdef, stop, rstop, sus, shape, {PASS_KNOBS})"
                             );
                         }
                     }
@@ -256,6 +270,10 @@ fn make_bot(spec: &str, deal_seed: u64, slot: usize) -> Result<Box<dyn Strategy>
                     .moon_bar(bar)
                     .moon_defense(def)
                     .rollout_defense(rdef)
+                    .stoppers(stop)
+                    .rollout_stoppers(rstop)
+                    .suspicion(sus)
+                    .shot_shape(shape)
                     .pass_model(pass),
             ))
         }

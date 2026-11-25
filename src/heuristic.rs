@@ -7,13 +7,9 @@
 //! single opponent has swept every point so far, it stops ducking and takes
 //! a trick to kill the moon.
 
+use crate::shape::{LONG_HEARTS, below, ducking, exposure, spare, top_run};
 use crate::{Strategy, View};
 use hearts::{Card, Hand, Holding, Rank, Seat, Suit, Trick};
-
-/// The ranks strictly below `rank`, as a holding mask.
-fn below(rank: Rank) -> Holding {
-    Holding::from_bits_truncate((1u16 << rank.get()) - 1)
-}
 
 /// How badly `card` wants to be passed away, higher first
 ///
@@ -59,11 +55,49 @@ pub(crate) fn pass_score(hand: Hand, card: Card, config: HeuristicConfig) -> i32
     }
 
     // A short side suit is a void in the making; spades keep their guards.
+    // Loser-aware, a club suit counts one longer: the first trick is a
+    // forced club round, which takes a club for nothing and lets nobody
+    // discard a point on the void it finds.
+    let loser = i32::from(config.loser_weight);
     let len = hand[card.suit].len() as i32;
-    if card.suit != Suit::Spades && len <= 3 {
-        score += i32::from(config.void_weight) * (8 - 2 * len);
+    let void_len = len + i32::from(loser != 0 && card.suit == Suit::Clubs);
+    if card.suit != Suit::Spades && void_len <= 3 {
+        score += i32::from(config.void_weight) * (8 - 2 * void_len);
+    }
+
+    if loser != 0 && card.suit != Suit::Spades {
+        score += loser_term(hand[card.suit], card, loser);
     }
     score
+}
+
+/// The loser-aware part of [`pass_score`]: a high card is as dangerous as
+/// its suit is exposed
+///
+/// Ducking cards score as before.  Every other card of a side suit takes
+/// `weight` times the suit's signed [`exposure`], less the suit's length —
+/// so honours over ducks are kept, bare honours go, and at equal exposure
+/// the shorter suit goes first.  A long heart suit is the exception: its
+/// high cards are guards, priced as if every one were covered, and its top
+/// card scores a rank under its second-highest so that when the suit must
+/// give something up, the top one stays.
+fn loser_term(mine: Holding, card: Card, weight: i32) -> i32 {
+    let out = Holding::ALL - mine;
+    if ducking(mine, out).contains(card.rank) {
+        return 0;
+    }
+    let len = mine.len() as i32;
+    if card.suit != Suit::Hearts || mine.len() < LONG_HEARTS {
+        return weight * exposure(mine, out) - len;
+    }
+    let mut tops = mine.iter().rev();
+    let under_second = match (tops.next(), tops.next()) {
+        (Some(top), Some(second)) if top == card.rank => {
+            i32::from(top.get()) - i32::from(second.get()) + 1
+        }
+        _ => 0,
+    };
+    -weight * len - len - under_second
 }
 
 /// Which card leaves first when two [`pass_score`]s tie
@@ -273,6 +307,13 @@ pub struct HeuristicConfig {
     /// The default, 4, already saturates: larger values change no more
     /// passes.
     pub queen_insurance: u8,
+    /// Weight of the loser-aware pass term; zero, the default, disables it
+    ///
+    /// Nonzero, a side-suit card that is not a sure duck is scored by how
+    /// exposed its suit is — honours with few small cards under them go,
+    /// honours over ducks stay — high hearts over four or more are kept as
+    /// guards, and a club void counts for less than a diamond one.
+    pub loser_weight: u8,
 }
 
 impl HeuristicConfig {
@@ -290,6 +331,7 @@ impl HeuristicConfig {
             spade_guards: 4,
             two_of_clubs_bonus: 6,
             queen_insurance: 4,
+            loser_weight: 0,
         }
     }
 }
@@ -338,24 +380,316 @@ fn moon_threat(view: &View<'_>, threshold: u8) -> Option<Seat> {
     sweeper.filter(|&seat| seat != view.seat() && view.points_taken(seat) >= threshold)
 }
 
+/// How a seat defends against a suspected moon: when it starts, and whether
+/// it keeps stoppers
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Defense {
+    /// Sole-sweeper points at which the defense starts.
+    pub trigger: u8,
+    /// Whether to play [`stopper_defense`] rather than only take tricks
+    /// from the sweeper.
+    pub stoppers: bool,
+}
+
+/// [`suspect`] sign: a high heart led that no outstanding heart beats.
+const SIGN_BOSS_HEART: u8 = 1;
+/// [`suspect`] sign: the A♠ or K♠ led while the Q♠ is at large, by a seat
+/// not known to hold her.
+const SIGN_SPADE_HONOUR: u8 = 2;
+/// [`suspect`] sign: a suit led in which every other seat is known void.
+const SIGN_SOLO_SUIT: u8 = 4;
+/// [`suspect`] sign: the Q♠ taken on the first spade round by a card played
+/// after her.
+const SIGN_QUEEN_TAKEN: u8 = 8;
+
+/// The opponent whose play so far looks like a moon attempt, judged by the
+/// enabled `signs` (a mask of the `SIGN_*` bits) before any points settle it
+///
+/// The latest sign wins, and a suspect stands only while no other seat has
+/// taken a point: suspicion ends the moment the points are split, or land
+/// on somebody else.  Every test is as the table stood when the card was
+/// led — outstanding cards and shown voids are rebuilt trick by trick.
+fn suspect(view: &View<'_>, signs: u8) -> Option<Seat> {
+    if signs == 0 {
+        return None;
+    }
+    let me = view.seat();
+    // Never outstanding to this seat: its hand now and everything it played.
+    let mut mine = view.hand();
+    for trick in view.tricks().iter().copied().chain(view.current_trick()) {
+        mine |= trick.card_from(me).map_or(Hand::EMPTY, Hand::from);
+    }
+    // The only way to know where the queen is: having passed her there.
+    let queen_at = view
+        .passed()
+        .filter(|passed| passed.contains(Card::QUEEN_OF_SPADES))
+        .map(|_| view.direction().receiver(me));
+
+    let mut gone = Hand::EMPTY;
+    let mut voids = [0u8; 4];
+    let mut spades_led = false;
+    let mut suspect = None;
+    for trick in view.tricks().iter().copied().chain(view.current_trick()) {
+        let Some(led) = trick.suit() else { break };
+        let leader = trick.leader();
+        let lead = trick.card_from(leader).expect("a led trick has a lead");
+        let out = Holding::ALL - mine[led] - gone[led] - Holding::from_rank(lead.rank);
+        let boss_heart = led == Suit::Hearts
+            // "High" is read as an honour; lower boss hearts are endgames.
+            && lead.rank >= Rank::J
+            && (out - below(lead.rank)).is_empty();
+        let spade_honour = led == Suit::Spades
+            && lead.rank > Rank::Q
+            // "Early" is read as while the queen is still at large.
+            && !gone.contains(Card::QUEEN_OF_SPADES)
+            && queen_at != Some(leader);
+        let solo_suit = Seat::ALL
+            .into_iter()
+            .all(|seat| seat == leader || voids[seat as usize] & 1 << led as u8 != 0);
+        if signs & SIGN_BOSS_HEART != 0 && boss_heart
+            || signs & SIGN_SPADE_HONOUR != 0 && spade_honour
+            || signs & SIGN_SOLO_SUIT != 0 && solo_suit
+        {
+            suspect = Some(leader);
+        }
+        // Deliberately: the winning card came down after the queen did.
+        if signs & SIGN_QUEEN_TAKEN != 0
+            && led == Suit::Spades
+            && !spades_led
+            && trick.is_complete()
+            && let Some(winner) = trick.winner()
+            && let Some(queen) = trick
+                .plays()
+                .position(|(_, card)| card == Card::QUEEN_OF_SPADES)
+            && trick.plays().position(|(seat, _)| seat == winner) > Some(queen)
+        {
+            suspect = Some(winner);
+        }
+        spades_led |= led == Suit::Spades;
+        for (seat, card) in trick.plays() {
+            if card.suit != led {
+                voids[seat as usize] |= 1 << led as u8;
+            }
+            gone.insert(card);
+        }
+    }
+    suspect.filter(|&suspect| {
+        suspect != me
+            && Seat::ALL
+                .into_iter()
+                .all(|seat| seat == suspect || view.points_taken(seat) == 0)
+    })
+}
+
 /// The knowledge-based moon-defense play, shared by [`HeuristicBot`] and the
 /// [`MonteCarloBot`](crate::MonteCarloBot)'s live decision.
 ///
-/// When a single opponent has swept at least `threshold` points and is
-/// winning the current trick, stop ducking: beat them as cheaply as possible
-/// (but never with our own Q♠ if avoidable), and when we cannot beat them, at
-/// least gift them no penalty card toward the sweep.  `None` when no defense
-/// applies, so the caller falls back to its normal policy.  The Monte Carlo
+/// The threat is a single opponent who has swept at least
+/// `defense.trigger` points, or failing that the [`suspect`] the enabled
+/// `signs` point at.  Against it, stop ducking: beat them as cheaply as
+/// possible when they are winning the trick (but never with our own Q♠ if
+/// avoidable), and when we cannot beat them, at least gift them no penalty
+/// card toward the sweep; with `defense.stoppers`, play
+/// [`stopper_defense`] first.  `None` when no defense applies, so the
+/// caller falls back to its normal policy.  The Monte Carlo
 /// rollouts model opponents as greedy duckers who never shoot the moon, so
 /// the search is blind to a moon in progress; this reactive overlay covers
 /// the gap.
-pub(crate) fn moon_defense(view: &View<'_>, threshold: u8) -> Option<Card> {
-    let threat = moon_threat(view, threshold)?;
+pub(crate) fn moon_defense(view: &View<'_>, defense: Defense, signs: u8) -> Option<Card> {
+    let threat = moon_threat(view, defense.trigger).or_else(|| suspect(view, signs))?;
     let trick = view.current_trick()?;
-    if trick.winner() != Some(threat) {
-        return None;
+    defend(
+        view.hand(),
+        view.legal_plays(),
+        trick,
+        view.played(),
+        view.tricks(),
+        threat,
+        defense.stoppers,
+    )
+}
+
+/// One defender's play against `shooter`, from its own cards and the public
+/// record: [`stopper_defense`] when `stoppers` is set, else — or when that
+/// has nothing to say — [`beat_threat`] on a trick the shooter is winning
+fn defend(
+    hand: Hand,
+    legal: Hand,
+    trick: Trick,
+    played: Hand,
+    tricks: &[Trick],
+    shooter: Seat,
+    stoppers: bool,
+) -> Option<Card> {
+    if stoppers && let Some(card) = stopper_defense(hand, legal, trick, played, tricks, shooter) {
+        return Some(card);
     }
-    beat_threat(view.legal_plays(), trick)
+    if trick.winner() == Some(shooter) {
+        beat_threat(legal, trick)
+    } else {
+        None
+    }
+}
+
+/// The stopper-keeping defense against a live shot by `shooter`
+///
+/// A defender's cards have a second value while somebody may be shooting:
+/// whether they still stop the shot.  In order:
+///
+/// 1. Take a point trick when the card that takes it is safe to play — a
+///    heart no outstanding heart beats when leading, the cheapest winner
+///    once the shooter has played, a card nothing outstanding beats
+///    before — unless that means taking the Q♠.
+/// 2. Holding the heart no outstanding heart beats, one stopper is as
+///    certain as it gets: keep that card and play everything else by the
+///    ordinary policy, which unloads the Q♠ and high hearts on the
+///    shooter.
+/// 3. On lead, a suit the shooter has shown out of, hearts first, lowest
+///    card: the shooter cannot win the trick.
+/// 4. Following with nothing that wins, in a stopper suit with a card to
+///    spare, the second-highest goes and the top card survives.
+/// 5. Discarding on a trick the shooter has already lost, a point card, to
+///    split the points; otherwise a pointless card that breaks no stopper —
+///    never past a stopper's spare length, and a heart only when forced,
+///    the top one last.
+///
+/// `None` when none applies.  `hand` is the defender's whole hand (stopper
+/// length counts cards it may not legally play now), `played` includes the
+/// trick in progress, and `tricks` are the completed tricks.
+fn stopper_defense(
+    hand: Hand,
+    legal: Hand,
+    trick: Trick,
+    played: Hand,
+    tricks: &[Trick],
+    shooter: Seat,
+) -> Option<Card> {
+    let out = |suit: Suit| Holding::ALL - hand[suit] - played[suit];
+    let boss_hearts = top_run(hand[Suit::Hearts], out(Suit::Hearts));
+    // The certain stopper, and the ordinary policy over everything else.
+    let free = || {
+        let rank = boss_hearts.iter().next_back()?;
+        let rest = legal
+            - Hand::from(Card {
+                suit: Suit::Hearts,
+                rank,
+            });
+        (!rest.is_empty()).then(|| greedy_play(rest, trick, played))
+    };
+
+    let Some(led) = trick.suit() else {
+        // My own heart is a point: a trick it must win ends the shot.
+        if let Some(rank) = (legal[Suit::Hearts] & boss_hearts).iter().next() {
+            return Some(Card {
+                suit: Suit::Hearts,
+                rank,
+            });
+        }
+        // The spec's other lead, a low card some other opponent is forced
+        // to win, is the same lead: from legal knowledge another seat is
+        // *forced* to win only when the shooter cannot follow.
+        let shown_out = |suit: Suit| {
+            tricks.iter().any(|past| {
+                past.suit() == Some(suit)
+                    && past
+                        .card_from(shooter)
+                        .is_some_and(|card| card.suit != suit)
+            })
+        };
+        return [Suit::Hearts, Suit::Clubs, Suit::Diamonds, Suit::Spades]
+            .into_iter()
+            .filter(|&suit| shown_out(suit))
+            .find_map(|suit| {
+                (legal - Hand::QUEEN_OF_SPADES)[suit]
+                    .iter()
+                    .next()
+                    .map(|rank| Card { suit, rank })
+            })
+            .or_else(free);
+    };
+
+    let shooter_played = trick.card_from(shooter).is_some();
+    let follow = legal[led];
+    if follow.is_empty() {
+        if shooter_played && trick.winner() != Some(shooter) {
+            // Another opponent takes this trick whatever follows.
+            let points = legal & Hand::PENALTIES;
+            return (!points.is_empty()).then(|| best_dump(points, played));
+        }
+        if let Some(card) = free() {
+            return Some(card);
+        }
+        let harmless = legal - Hand::PENALTIES;
+        let slack = |card: &Card| spare(hand[card.suit], out(card.suit));
+        let loose = harmless
+            .into_iter()
+            .filter(|card| slack(card).is_none())
+            .max_by_key(|card| card.rank);
+        let spare_low = || {
+            harmless
+                .into_iter()
+                .filter(|card| slack(card).is_some_and(|spare| spare > 0))
+                .min_by_key(|card| card.rank)
+        };
+        // Past here something has to give: a stopper's length, then a low
+        // heart, then whatever is left.
+        let top_heart = legal[Suit::Hearts].iter().next_back();
+        let low_heart = || {
+            legal[Suit::Hearts]
+                .iter()
+                .find(|&rank| Some(rank) != top_heart)
+                .map(|rank| Card {
+                    suit: Suit::Hearts,
+                    rank,
+                })
+        };
+        return loose
+            .or_else(spare_low)
+            .or_else(|| harmless.into_iter().min_by_key(|card| card.rank))
+            .or_else(low_heart)
+            .or_else(|| (legal - Hand::HEARTS).into_iter().next())
+            .or_else(|| legal.into_iter().next());
+    }
+
+    let winner = winning_card(trick).expect("a led trick has a winning card");
+    let queen = Card::QUEEN_OF_SPADES;
+    let mut beat = follow - below(winner.rank) - Holding::from_rank(winner.rank);
+    if led == Suit::Spades {
+        beat -= Holding::from_rank(Rank::Q);
+    }
+    let pointed = led == Suit::Hearts || trick.points() > 0;
+    // She is in the trick already, or may still land on a spade trick.
+    let queen_risk = trick.cards().contains(queen)
+        || led == Suit::Spades
+            && trick.len() < 3
+            && !played.contains(queen)
+            && !hand.contains(queen);
+    if pointed && !queen_risk {
+        let take = if shooter_played {
+            beat
+        } else {
+            top_run(beat, out(led))
+        };
+        if let Some(rank) = take.iter().next() {
+            return Some(Card { suit: led, rank });
+        }
+    }
+    if let Some(card) = free() {
+        return Some(card);
+    }
+    // Nothing here wins, so every card is a duck: keep the top one.
+    let mut tops = follow.iter().rev();
+    match (tops.next(), tops.next()) {
+        (Some(top), Some(second))
+            if top < winner.rank && spare(hand[led], out(led)).is_some_and(|spare| spare > 0) =>
+        {
+            Some(Card {
+                suit: led,
+                rank: second,
+            })
+        }
+        _ => None,
+    }
 }
 
 /// Take this trick away from the seat currently winning it
@@ -402,7 +736,11 @@ impl Strategy for HeuristicBot {
     }
 
     fn play_card(&mut self, view: &View<'_>) -> Card {
-        if let Some(card) = moon_defense(view, self.config.moon_defense) {
+        let defense = Defense {
+            trigger: self.config.moon_defense,
+            stoppers: false,
+        };
+        if let Some(card) = moon_defense(view, defense, 0) {
             return card;
         }
         let legal = view.legal_plays();
@@ -462,9 +800,11 @@ pub(crate) fn shoot_play(legal: Hand, trick: Trick, played: Hand) -> Card {
 ///
 /// `shooter`, when set, is the seat whose moon the world is testing: it
 /// plays [`shoot_play`] for as long as the shot is alive, and the other
-/// three stop ducking once the shooter holds `trigger` points (the live
-/// table's eight by default) and is winning the trick — the same trigger
-/// [`HeuristicBot`]'s moon-defense overlay fires on.  Defending from trick 1 prices every
+/// three stop ducking once the shooter holds `defense.trigger` points (the
+/// live table's eight by default) and is winning the trick — the same
+/// trigger [`HeuristicBot`]'s moon-defense overlay fires on — or, with
+/// `defense.stoppers`, play [`stopper_defense`] from that point on.
+/// Defending from trick 1 prices every
 /// shot against a table no real opponent fields, while greedy duckers
 /// with no trigger at all would make every moon look like a laydown.
 ///
@@ -476,7 +816,7 @@ pub(crate) fn rollout_play(
     seat: Seat,
     shooter: Option<Seat>,
     played: Hand,
-    trigger: u8,
+    defense: Defense,
 ) -> Card {
     let legal = round.legal_plays(seat);
     let trick = round.current_trick().expect("a playing round has a trick");
@@ -493,9 +833,18 @@ pub(crate) fn rollout_play(
         if seat == shooter {
             return shoot_play(legal, trick, played);
         }
-        if trick.winner() == Some(shooter)
-            && round.points_taken(shooter) >= trigger
-            && let Some(card) = beat_threat(legal, trick)
+        // The cheap test first: most plays are not on the shooter's trick.
+        if (defense.stoppers || trick.winner() == Some(shooter))
+            && round.points_taken(shooter) >= defense.trigger
+            && let Some(card) = defend(
+                round.hand(seat),
+                legal,
+                trick,
+                played,
+                round.tricks(),
+                shooter,
+                defense.stoppers,
+            )
         {
             return card;
         }
@@ -811,6 +1160,242 @@ mod tests {
         // North must beat the sweep with the K♠ — never its own Q♠.
         assert_eq!(table.turn(), Some(Seat::North));
         assert_eq!(defender.play_card(&table.view(Seat::North)), card("K♠"));
+    }
+
+    #[test]
+    fn the_loser_aware_pass_reads_the_bottom_of_the_suit() {
+        let aware = HeuristicConfig {
+            loser_weight: 2,
+            ..HeuristicConfig::default()
+        };
+        let key = |dealt: &str, text: &str| pass_key(hand(dealt), card(text), aware);
+
+        // The spec's example: bare club honours go before diamond honours
+        // that sit over two ducks.
+        let dealt = "JKA.23KA.2345.23";
+        assert!(key(dealt, "J♣") > key(dealt, "A♦"));
+        assert_eq!(
+            greedy_pass(hand(dealt), aware),
+            [card("A♣"), card("K♣"), card("J♣")]
+        );
+
+        // An ace over three small cards is nearly safe: kept, where the
+        // shipped pass sends it first.
+        let covered = hand("6789.234A.2345.T");
+        assert_eq!(
+            greedy_pass(covered, HeuristicConfig::default())[0],
+            card("A♦")
+        );
+        assert!(!greedy_pass(covered, aware).contains(&card("A♦")));
+
+        // Long hearts keep their guards, and give the second-highest
+        // before the top one; short hearts are exposed like any suit.
+        let long = "2345.2345.2QKA.7";
+        assert!(key(long, "K♥") > key(long, "A♥"));
+        let short = "23456.2345.QKA.7";
+        assert!(key(short, "A♥") > key(short, "K♥"));
+        assert!(key(short, "K♥").0 > 13 && 13 > key(long, "K♥").0);
+        assert!(key(short, "A♥") > key(short, "6♣"));
+
+        // A club void is worth less than a diamond void of the same
+        // length: the shipped pass empties the clubs, this one the diamonds.
+        let twins = hand("9T.89.23456.2345");
+        assert_eq!(
+            greedy_pass(twins, HeuristicConfig::default())[0],
+            card("T♣")
+        );
+        assert_eq!(greedy_pass(twins, aware)[0], card("9♦"));
+    }
+
+    /// A trick led by `leader` with `cards` played in turn.
+    fn trick(leader: Seat, cards: &[&str]) -> Trick {
+        let mut trick = Trick::new(leader);
+        for text in cards {
+            trick.play(card(text)).unwrap();
+        }
+        trick
+    }
+
+    #[test]
+    fn a_defender_keeps_what_stops_the_shot() {
+        // North is shooting throughout; `played` is the trick in progress.
+        let defend = |held: &str, trick: Trick, tricks: &[Trick]| {
+            let held = hand(held);
+            stopper_defense(held, held, trick, trick.cards(), tricks, Seat::North)
+        };
+
+        // Following under the shooter's ace: the second-highest goes and
+        // the king survives.  The ordinary policy ducks with the king.
+        let ace = trick(Seat::North, &["A♦"]);
+        assert_eq!(defend(".27K..", ace, &[]), Some(card("7♦")));
+        assert_eq!(
+            greedy_play(hand(".27K.."), ace, ace.cards()),
+            card("K♦"),
+            "the ordinary policy ducks the stopper away"
+        );
+
+        // Discarding on the shooter's trick: not the heart, and not the
+        // K♦ 7♦ stopper, which has no card to spare under the ace.
+        let club = trick(Seat::North, &["A♣"]);
+        assert_eq!(defend(".7K.4.59", club, &[]), Some(card("9♠")));
+        // With the 2♦ as well there is one to spare, and it is the low one.
+        assert_eq!(defend(".27K.4.", club, &[]), Some(card("2♦")));
+        // Nothing but hearts: a low one, never the last or the top.
+        assert_eq!(defend("..48.", club, &[]), Some(card("4♥")));
+
+        // The shooter has lost this trick: split the points.
+        let lost = trick(Seat::North, &["5♣", "9♣"]);
+        assert_eq!(defend(".7K.4.59", lost, &[]), Some(card("4♥")));
+
+        // A point trick the shooter has yet to play to: take it only with
+        // a card nothing outstanding beats.
+        let heart = trick(Seat::East, &["5♥"]);
+        assert_eq!(defend("..3A.", heart, &[]), Some(card("A♥")));
+        assert_eq!(defend("..3K.", heart, &[]), None);
+        // ...and never when it means taking the Q♠.
+        let queen = trick(Seat::East, &["5♥", "Q♠"]);
+        assert_ne!(defend("..3A.", queen, &[]), Some(card("A♥")));
+
+        // One certain stopper frees the rest: the queen goes on the
+        // shooter, the boss heart stays.
+        assert_eq!(defend("..2A.Q", club, &[]), Some(card("Q♠")));
+
+        // On lead: the boss heart if hearts may be led, else a suit the
+        // shooter has shown out of.
+        let lead = Trick::new(Seat::South);
+        assert_eq!(defend("9.38.2A.", lead, &[]), Some(card("A♥")));
+        let shown = [trick(Seat::East, &["5♦", "6♦", "7♦", "2♣"])];
+        assert_eq!(defend("9.38..4", lead, &shown), Some(card("3♦")));
+        assert_eq!(defend("9.38..4", lead, &[]), None);
+    }
+
+    #[cfg(feature = "rand")]
+    #[test]
+    fn rollout_defenders_keep_stoppers_only_when_told() {
+        use hearts::{PassDirection, Round, Rules};
+
+        // North, the shooter, leads the 2♣ and East tops it.  South's king
+        // cannot win: the stopper-keeper follows with the seven.
+        let hands = [
+            hand("2.23456789TJQK.."),
+            hand("A...23456789TJQK"),
+            hand("37K..23456789TJ."),
+            hand("45689TJQ.A.QKA.A"),
+        ];
+        let mut round = Round::from_deal(Rules::new(), PassDirection::Hold, hands).unwrap();
+        round.play(Seat::North, card("2♣")).unwrap();
+        round.play(Seat::East, card("A♣")).unwrap();
+        let play = |stoppers| {
+            let defense = Defense {
+                trigger: 0,
+                stoppers,
+            };
+            rollout_play(
+                &round,
+                Seat::South,
+                Some(Seat::North),
+                round.played(),
+                defense,
+            )
+        };
+        assert_eq!(play(true), card("7♣"));
+        assert_eq!(play(false), card("K♣"));
+    }
+
+    #[test]
+    fn a_spade_honour_led_early_draws_suspicion() {
+        use crate::Table;
+        use hearts::{PassDirection, Round, Rules};
+
+        let hands = [
+            hand("2345678.234567.."),
+            hand("A...23456789TJKA"),
+            hand("9TJQK.89TJQKA..Q"),
+            hand("..23456789TJQKA."),
+        ];
+        let mut round = Round::from_deal(Rules::new(), PassDirection::Hold, hands).unwrap();
+        for (seat, text) in [
+            (Seat::North, "2♣"),
+            (Seat::East, "A♣"),
+            (Seat::South, "9♣"),
+            (Seat::West, "2♥"),
+        ] {
+            round.play(seat, card(text)).unwrap();
+        }
+        let before = Table::new(round.clone());
+        assert_eq!(suspect(&before.view(Seat::South), u8::MAX), None);
+
+        // East cashes the A♠ with the queen still out.
+        round.play(Seat::East, card("A♠")).unwrap();
+        let table = Table::new(round.clone());
+        let view = table.view(Seat::South);
+        assert_eq!(suspect(&view, SIGN_SPADE_HONOUR), Some(Seat::East));
+        assert_eq!(suspect(&view, !SIGN_SPADE_HONOUR), None);
+        assert_eq!(suspect(&table.view(Seat::East), u8::MAX), None);
+
+        // It is enough to start the defense eight points early: South
+        // would rather not feed the queen to the trick East is winning...
+        let defense = Defense {
+            trigger: 8,
+            stoppers: false,
+        };
+        assert_eq!(moon_defense(&view, defense, 0), None);
+        // ...though here she is South's only spade, so the forced card
+        // comes back either way.
+        assert_eq!(
+            moon_defense(&view, defense, SIGN_SPADE_HONOUR),
+            Some(card("Q♠"))
+        );
+    }
+
+    /// What the two pass-side knobs do to a random hand: how many A/K/Q the
+    /// pass carries at each loser weight, and how often the shape gate
+    /// opens at each allowance.  The numbers behind the A/B values.
+    ///
+    /// ```console
+    /// cargo test --release --lib pass_census -- --ignored --nocapture
+    /// ```
+    #[cfg(feature = "rand")]
+    #[test]
+    #[ignore = "pass census: 200,000 hands, run on demand"]
+    fn pass_census() {
+        use crate::shape::{shooter_pass, shot_losers};
+        use hearts::{PassDirection, Round, Rules};
+        use rand::SeedableRng as _;
+
+        const HANDS: u32 = 200_000;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x261);
+        let weights = [0u8, 1, 2, 3, 4, 6];
+        let mut honours = [0u32; 6];
+        let mut opens = [0u32; 6];
+        for _ in 0..HANDS / 4 {
+            let round = Round::deal(Rules::new(), PassDirection::Left, &mut rng);
+            for dealt in Seat::ALL.map(|seat| round.hand(seat)) {
+                for (count, loser_weight) in honours.iter_mut().zip(weights) {
+                    let config = HeuristicConfig {
+                        loser_weight,
+                        ..HeuristicConfig::default()
+                    };
+                    *count += greedy_pass(dealt, config)
+                        .into_iter()
+                        .filter(|card| card.rank >= Rank::Q)
+                        .count() as u32;
+                }
+                let pass: Hand = shooter_pass(dealt).into_iter().collect();
+                if let Some(losers) = shot_losers(dealt - pass) {
+                    for open in opens.iter_mut().skip(losers) {
+                        *open += 1;
+                    }
+                }
+            }
+        }
+        let per = |count: u32| f64::from(count) / f64::from(HANDS);
+        for (weight, count) in weights.into_iter().zip(honours) {
+            println!("loser={weight}: {:.3} A/K/Q a pass", per(count));
+        }
+        for (allowed, open) in opens.into_iter().enumerate() {
+            println!("shape={allowed}: gate opens on {:.4} of hands", per(open));
+        }
     }
 
     #[test]

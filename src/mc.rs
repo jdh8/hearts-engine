@@ -8,8 +8,9 @@
 //! state machine.
 
 use crate::heuristic::{
-    greedy_pass, greedy_play, moon_defense, pass_key, rollout_play, shoot_play,
+    Defense, greedy_pass, greedy_play, moon_defense, pass_key, rollout_play, shoot_play,
 };
+use crate::shape::{shooter_pass, shot_losers};
 use crate::{HeuristicConfig, Strategy, View};
 use hearts::{Card, Hand, PassDirection, Phase, Rank, Round, RoundResult, Rules, Seat, Suit};
 use rand::{Rng, RngExt as _};
@@ -59,7 +60,7 @@ enum Choice {
 impl Choice {
     /// Apply the move to a world and play it out: greedily, or with `me`
     /// shooting the moon against a table that defends.
-    fn roll(self, round: &mut Round, me: Seat, shoot: bool, trigger: u8) -> RoundResult {
+    fn roll(self, round: &mut Round, me: Seat, shoot: bool, defense: Defense) -> RoundResult {
         match self {
             Self::Pass(cards) => round
                 .pass(me, cards.into_iter().collect())
@@ -70,7 +71,7 @@ impl Choice {
         }
         let mut played = round.played();
         while let Some(seat) = round.turn() {
-            let card = rollout_play(round, seat, shoot.then_some(me), played, trigger);
+            let card = rollout_play(round, seat, shoot.then_some(me), played, defense);
             round
                 .play(seat, card)
                 .expect("the rollout policy picks from legal_plays");
@@ -135,10 +136,15 @@ pub struct MonteCarloBot<R: Rng> {
     moon_passes: u32,
     moon_share: (u32, u32),
     moon_bar: f64,
-    /// Sole-sweeper points at which the live play, and the defenders of a
-    /// shoot world, stop ducking.
-    moon_defense: u8,
-    rollout_defense: u8,
+    /// How the live play, and the defenders of a shoot world, defend
+    /// against a moon.
+    moon_defense: Defense,
+    rollout_defense: Defense,
+    /// The lead signs that start the live defense before points do.
+    suspicion: u8,
+    /// The most non-winners a shoot pass may keep, when the shape gate is
+    /// on.
+    shot_shape: Option<u8>,
 }
 
 /// One candidate action's Monte Carlo assessment, for a solver or hint view
@@ -191,8 +197,16 @@ impl<R: Rng> MonteCarloBot<R> {
             moon_attempts: 0,
             moon_passes: 0,
             moon_share: (0, 0),
-            moon_defense: 8,
-            rollout_defense: 8,
+            moon_defense: Defense {
+                trigger: 8,
+                stoppers: false,
+            },
+            rollout_defense: Defense {
+                trigger: 8,
+                stoppers: false,
+            },
+            suspicion: 0,
+            shot_shape: None,
         }
     }
 
@@ -243,7 +257,72 @@ impl<R: Rng> MonteCarloBot<R> {
     /// harder table to shoot against.
     #[must_use]
     pub const fn moon_defense(mut self, points: u8) -> Self {
-        self.moon_defense = points;
+        self.moon_defense.trigger = points;
+        self
+    }
+
+    /// Have the live play keep its stoppers against a suspected moon
+    ///
+    /// Off by default.  On, once the defense is triggered the bot stops
+    /// discarding the cards that still stop the shot — a suit's top card
+    /// with enough length under it, the last heart — follows with its
+    /// second-highest when nothing wins, takes point tricks it can take
+    /// without the Q♠, splits the points on a trick the shooter has lost,
+    /// and leads suits the shooter has shown out of.  These plays pre-empt
+    /// the search, as the trick-taking defense already does.
+    #[must_use]
+    pub const fn stoppers(mut self, stoppers: bool) -> Self {
+        self.moon_defense.stoppers = stoppers;
+        self
+    }
+
+    /// Give the same stopper-keeping play to the defenders the bot imagines
+    /// when it rolls out its own moon shot
+    ///
+    /// Off by default.  On prices a shot against a table that holds on to
+    /// what beats it, from [`rollout_defense`](Self::rollout_defense)
+    /// points on.
+    #[must_use]
+    pub const fn rollout_stoppers(mut self, stoppers: bool) -> Self {
+        self.rollout_defense.stoppers = stoppers;
+        self
+    }
+
+    /// Start the live defense from how a seat leads, before points fall
+    ///
+    /// A mask of signs, each its own switch; zero, the default, is none:
+    ///
+    /// - `1` — an honour heart led that no outstanding heart beats;
+    /// - `2` — the A♠ or K♠ led while the Q♠ is at large, by a seat not
+    ///   known to hold her;
+    /// - `4` — a suit led in which every other seat is known void;
+    /// - `8` — the Q♠ taken on the first spade round by a card played after
+    ///   her.
+    ///
+    /// The seat that last showed an enabled sign is defended against as a
+    /// sole sweeper at [`moon_defense`](Self::moon_defense) points would
+    /// be, until any other seat takes a point.  The rollouts' defenders do
+    /// not read it; [`rollout_defense`](Self::rollout_defense) moves them.
+    #[must_use]
+    pub const fn suspicion(mut self, signs: u8) -> Self {
+        self.suspicion = signs;
+        self
+    }
+
+    /// Gate the pass-time moon shot on the shape of the ten cards kept
+    ///
+    /// `None`, the default, offers the search one shoot pass per hand: the
+    /// three cards the pass policy least wants gone.  `Some(n)` builds the
+    /// pass a shooter would make instead — shed losing hearts while hearts
+    /// are short, then the lowest cards of the suit with the fewest
+    /// winners — and offers it only when the kept hand has at most `n`
+    /// non-winners and no losing heart.  A hand that fails is not offered
+    /// a shot at all; one that passes must still clear the significance
+    /// gate and [`moon_bar`](Self::moon_bar).  The gate reads the hand's
+    /// shape alone, so it does not inherit the rollouts' soft defenders.
+    #[must_use]
+    pub const fn shot_shape(mut self, max_losers: Option<u8>) -> Self {
+        self.shot_shape = max_losers;
         self
     }
 
@@ -254,7 +333,7 @@ impl<R: Rng> MonteCarloBot<R> {
     /// earlier than the bot itself does.
     #[must_use]
     pub const fn rollout_defense(mut self, points: u8) -> Self {
-        self.rollout_defense = points;
+        self.rollout_defense.trigger = points;
         self
     }
 
@@ -529,7 +608,7 @@ impl<R: Rng> MonteCarloBot<R> {
     /// incumbent first; empty when the seat has no real choice
     fn candidates(&self, view: &View<'_>) -> Vec<Candidate> {
         match view.phase() {
-            Phase::Passing => pass_candidates(view, self.pass_model),
+            Phase::Passing => pass_candidates(view, self.pass_model, self.shot_shape),
             Phase::Playing => play_candidates(view),
             Phase::Finished => Vec::new(),
         }
@@ -601,7 +680,7 @@ impl<R: Rng> MonteCarloBot<R> {
         // a greedy ducker who never shoots the moon, so the search is blind
         // to a moon in progress.  Break it with the same overlay HeuristicBot
         // uses.
-        if let Some(card) = moon_defense(view, self.moon_defense) {
+        if let Some(card) = moon_defense(view, self.moon_defense, self.suspicion) {
             return Some((card, false));
         }
         let trick = view.current_trick()?;
@@ -738,14 +817,15 @@ fn push_new(triples: &mut Vec<[Card; 3]>, triple: [Card; 3]) {
 
 /// The candidate passes: the greedy incumbent first, then every triple of the
 /// [`PASS_POOL`] highest-ranked cards, passes that empty a short side suit,
-/// plus the one moon pass
+/// plus the one moon pass — which `shape`, the
+/// [`shot_shape`](MonteCarloBot::shot_shape) gate, may withhold
 ///
 /// Candidate 0 is [`greedy_pass`] itself, built rather than inferred.  The
 /// ranking below agrees with the policy on the first card and nowhere after
 /// it — the policy rescores against the shrinking hand — so the invariant the
 /// significance gate defends can no longer be inherited from two sorts that
 /// happened to agree.
-fn pass_candidates(view: &View<'_>, config: HeuristicConfig) -> Vec<Candidate> {
+fn pass_candidates(view: &View<'_>, config: HeuristicConfig, shape: Option<u8>) -> Vec<Candidate> {
     let hand = view.hand();
     let mut ranked: Vec<Card> = hand.into_iter().collect();
     // `pass_key` is injective over a hand, so the sort needs no stability and
@@ -762,9 +842,20 @@ fn pass_candidates(view: &View<'_>, config: HeuristicConfig) -> Vec<Candidate> {
     ducker.queen_insurance = 0;
     let mut ballast: Vec<Card> = hand.into_iter().collect();
     ballast.sort_unstable_by_key(|&card| core::cmp::Reverse(pass_key(hand, card, ducker)));
-    let losers: [Card; 3] = ballast[ballast.len() - 3..]
+    let ballast: [Card; 3] = ballast[ballast.len() - 3..]
         .try_into()
         .expect("a passing hand holds thirteen cards");
+    // With the shape gate on, the shot is the shooter's own pass, and it is
+    // offered only when the ten cards it keeps are winners nearly
+    // everywhere.  Not offering it is simpler than offering it barred from
+    // replacing the incumbent, and saves its rollouts.
+    let shot = match shape {
+        None => Some(ballast),
+        Some(max) => Some(shooter_pass(hand)).filter(|pass| {
+            let kept = hand - pass.iter().copied().collect::<Hand>();
+            shot_losers(kept).is_some_and(|losers| losers <= usize::from(max))
+        }),
+    };
 
     let pool = &ranked[..ranked.len().min(PASS_POOL)];
     let mut triples = Vec::<[Card; 3]>::with_capacity(24);
@@ -808,11 +899,11 @@ fn pass_candidates(view: &View<'_>, config: HeuristicConfig) -> Vec<Candidate> {
             shoot: false,
         })
         .collect();
-    out.push(Candidate {
-        label: format!("shoot, pass {} {} {}", losers[0], losers[1], losers[2]),
-        choice: Choice::Pass(losers),
+    out.extend(shot.map(|pass| Candidate {
+        label: format!("shoot, pass {} {} {}", pass[0], pass[1], pass[2]),
+        choice: Choice::Pass(pass),
         shoot: true,
-    });
+    }));
     out
 }
 
@@ -917,7 +1008,7 @@ fn score_worlds(
     candidates: &[Candidate],
     gate: f64,
     win_only: bool,
-    trigger: u8,
+    defense: Defense,
     scored: &mut [Scored],
     alive: &mut Vec<usize>,
 ) {
@@ -926,7 +1017,7 @@ fn score_worlds(
     let standing = absolute_standing(me, view.game_scores());
     let eval = |candidate: &Candidate, world: &Round, scratch: &mut Round| {
         scratch.clone_from(world);
-        let result = candidate.choice.roll(scratch, me, candidate.shoot, trigger);
+        let result = candidate.choice.roll(scratch, me, candidate.shoot, defense);
         let moon = u32::from(result.shooter() == Some(me));
         let scores = result.scores(rules);
         (
@@ -1778,7 +1869,7 @@ mod tests {
         let table = Table::deal(Rules::new(), PassDirection::Left, &mut rng);
         let me = table.turn().expect("passing starts at North");
         let view = table.view(me);
-        let cands = pass_candidates(&view, HeuristicConfig::default());
+        let cands = pass_candidates(&view, HeuristicConfig::default(), None);
         assert!(cands.iter().filter(|c| !c.shoot).count() >= 20);
         assert_eq!(cands.iter().filter(|c| c.shoot).count(), 1, "the moon pass");
 
@@ -1816,7 +1907,7 @@ mod tests {
         let config = HeuristicConfig::default();
 
         let incumbent = greedy_pass(mine, config);
-        let cands = pass_candidates(&table.view(Seat::North), config);
+        let cands = pass_candidates(&table.view(Seat::North), config, None);
         assert!(
             matches!(cands[0].choice, Choice::Pass(triple) if triple == incumbent),
             "candidate 0 is not the greedy pass: {}",
@@ -1852,7 +1943,7 @@ mod tests {
         let table = Table::new(round);
         let void = hand("234...");
         assert!(
-            pass_candidates(&table.view(Seat::North), HeuristicConfig::default())
+            pass_candidates(&table.view(Seat::North), HeuristicConfig::default(), None)
                 .iter()
                 .any(|candidate| matches!(candidate.choice, Choice::Pass(cards)
                 if cards.into_iter().collect::<Hand>() == void))
@@ -1890,6 +1981,37 @@ mod tests {
             "shot the moon holding nothing: {}",
             picked.action,
         );
+    }
+
+    #[test]
+    fn the_shape_gate_withholds_a_shot_from_a_weak_hand() {
+        // North holds ten winners behind three small diamonds, or the same
+        // hand with its hearts traded for East's small ones.
+        let deal = |north: &str| {
+            let north: Hand = north.parse().expect("a valid hand");
+            let rest: Vec<Card> = (Hand::ALL - north).into_iter().collect();
+            let mut hands = [north; 4];
+            for (hand, cards) in hands[1..].iter_mut().zip(rest.chunks(13)) {
+                *hand = cards.iter().copied().collect();
+            }
+            Table::new(Round::from_deal(Rules::new(), PassDirection::Left, hands).unwrap())
+        };
+        let shots = |north: &str, shape| {
+            pass_candidates(
+                &deal(north).view(Seat::North),
+                HeuristicConfig::default(),
+                shape,
+            )
+            .into_iter()
+            .filter(|candidate| candidate.shoot)
+            .map(|candidate| candidate.label)
+            .collect::<Vec<String>>()
+        };
+        let (strong, weak) = ("KA.234.9TJQKA.KA", "KA.234.23456A.KA");
+        assert_eq!(shots(strong, Some(0)), ["shoot, pass 2♦ 3♦ 4♦"]);
+        assert_eq!(shots(weak, Some(3)), [""; 0]);
+        // Ungated, every hand is offered its one shot.
+        assert_eq!(shots(weak, None).len(), 1);
     }
 
     #[test]
@@ -2067,8 +2189,13 @@ mod tests {
         let round = laydown_round();
         let ace = Choice::Play(card("A♣"));
         let mut continuation = round.clone();
+        let defense = Defense {
+            trigger: 8,
+            stoppers: false,
+        };
         assert_eq!(
-            ace.roll(&mut continuation, Seat::North, true, 8).shooter(),
+            ace.roll(&mut continuation, Seat::North, true, defense)
+                .shooter(),
             Some(Seat::North),
             "the shooting continuation takes all thirteen tricks",
         );
