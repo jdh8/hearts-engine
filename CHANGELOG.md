@@ -85,6 +85,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **Arena-gap P5 stage 2 read (2026-11-26).**  The field's live
+  moon-defence trigger is a null knob: `mc:128,def=1` leaves our moons
+  at 0.051 a hand against the site's 0.0147 (`def=8` 0.056).  The
+  stopper-keeping defence (`stop=true`) lands 0.019, and with `def=1`
+  0.009, so the calibrated field lies between; two interpolating runs are
+  queued.  Table in docs/arena-gap.md.
 - Open the [Hearts Bot Arena campaign](docs/arena-gap.md).  Over the
   5,464 games `rusty-hearts` v2 has played there, ordinary play is sound
   (6.03 points per moonless hand, fourth-best of twelve rated bots) and

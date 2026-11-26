@@ -157,7 +157,7 @@ rating (2320 → 2327).
 | P2 | the moon bar against real defenders | selection rule | calibrated; unanimous bar fails the local gate (`win` −12.9 SE), unpriced on the site |
 | P3 | closing the last hand | win-only payoff | unbuilt |
 | P4 | paired practice games | instrument | needs the owner's leave |
-| P5 | calibrated defenders | instrument, then rollout defenders | stages 0–1 done (2026-11-26); stage 2 sweep queued |
+| P5 | calibrated defenders | instrument, then rollout defenders | stages 0–1 done (2026-11-26); stage 2: trigger null, `stop=true` field within 0.004 of target, two stop fields queued |
 | P6 | clean-room behaviours B1–B4 | pass policy, shot gate, defenders | built 2026-11-26, all off; unpriced |
 
 ### P0 — attempt census
@@ -535,7 +535,7 @@ defence at work and already the board's best.  And the win target is
 at ordinary play too, which no moon knob supplies — stage 2 matches the
 moon rows and reports whatever `win` comes out.
 
-**Stage 2: the trigger sweep (queued 2026-11-26).**  The trigger is now
+**Stage 2: the trigger sweep (read 2026-11-26).**  The trigger is now
 two `MonteCarloBot` knobs, both 8 by default: `moon_defense` (the live
 play; arena spec `def=N`) and `rollout_defense` (the defenders of a shoot
 world; `rdef=N`).  The sweep moves the field's live trigger only and
@@ -558,6 +558,37 @@ own moon rate (target 0.040 a seat) reported beside it.  If `def=1`
 still leaves us above about 0.03, the trigger is too small a knob: build
 the stopper knob, as planned.  Shots started and landed stay uncounted
 locally unless the moon rows match and the split is needed.
+
+**Result (2026-11-26).**  Each row is 500 game blocks, seed 21, us as
+`mc:1024,win=true` against three identical `mc:128` opponents; the two
+`stop=true` rows add P6's B3 (stopper-keeping defence) to the field.
+"field moons" is the range of the three opponents' `moons`.
+
+| field | own moons | field moons, a seat | own `win` |
+| --- | ---: | ---: | ---: |
+| site target | 0.0147 ± 0.0005 | 0.040 | 0.213 |
+| `def=8` (stage 1, 2,000 blocks) | 0.056 ± 0.001 | 0.055 | 0.280 ± 0.005 |
+| `def=6` | 0.056 ± 0.002 | 0.053–0.055 | 0.286 ± 0.009 |
+| `def=4` | 0.054 ± 0.002 | 0.053–0.054 | 0.277 ± 0.009 |
+| `def=2` | 0.051 ± 0.002 | 0.053–0.055 | 0.264 ± 0.009 |
+| `def=1` | 0.051 ± 0.002 | 0.050–0.051 | 0.288 ± 0.010 |
+| `stop=true` | 0.019 ± 0.001 | 0.026–0.028 | 0.276 ± 0.009 |
+| `def=1,stop=true` | 0.009 ± 0.001 | 0.015–0.017 | 0.316 ± 0.009 |
+
+The trigger is the small knob the gate anticipated: `def=1` takes a
+tenth of the gap (0.056 → 0.051) and the field's own moons barely move.
+A defender that has already ducked its stoppers away has nothing left to
+play when the trigger fires, however early it fires, so the stopper knob
+does the work.  `stop=true` alone lands 0.004 above the target (about
+3 SE) and `def=1,stop=true` 0.006 below it, so the target sits between
+them: `def=2,stop=true` and `def=4,stop=true` are queued to pick the
+instrument (ids 31–32).  Two readings beside the gate: the field's own
+moons fall under the site's (0.027 against 0.040) because the defence
+works on the field's shooters too — one symmetric knob cannot match both
+rows, and our row is the gate; and our `win` is unmoved by `stop=true`
+(0.276) but rises to 0.316 with `def=1,stop=true`, further from 0.213,
+since a field that takes point tricks to stop every shot pays for it in
+placings — prefer the mildest stop field that passes.
 
 ### P6 — the clean-room behaviours
 
