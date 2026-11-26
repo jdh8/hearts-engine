@@ -573,6 +573,8 @@ locally unless the moon rows match and the split is needed.
 | `def=2` | 0.051 ± 0.002 | 0.053–0.055 | 0.264 ± 0.009 |
 | `def=1` | 0.051 ± 0.002 | 0.050–0.051 | 0.288 ± 0.010 |
 | `stop=true` | 0.019 ± 0.001 | 0.026–0.028 | 0.276 ± 0.009 |
+| **`def=4,stop=true`** | 0.014 ± 0.001 | 0.021–0.024 | 0.281 ± 0.009 |
+| `def=2,stop=true` | 0.013 ± 0.001 | 0.020–0.022 | 0.295 ± 0.009 |
 | `def=1,stop=true` | 0.009 ± 0.001 | 0.015–0.017 | 0.316 ± 0.009 |
 
 The trigger is the small knob the gate anticipated: `def=1` takes a
@@ -581,8 +583,10 @@ A defender that has already ducked its stoppers away has nothing left to
 play when the trigger fires, however early it fires, so the stopper knob
 does the work.  `stop=true` alone lands 0.004 above the target (about
 3 SE) and `def=1,stop=true` 0.006 below it, so the target sits between
-them: `def=2,stop=true` and `def=4,stop=true` are queued to pick the
-instrument (ids 31–32).  Two readings beside the gate: the field's own
+them: `def=4,stop=true` (0.014) and `def=2,stop=true` (0.013) both
+pass the gate, and **the instrument is `mc:128,def=4,stop=true`**, the
+milder of the two (own `win` 0.281 against 0.295).  Two readings beside
+the gate: the field's own
 moons fall under the site's (0.027 against 0.040) because the defence
 works on the field's shooters too — one symmetric knob cannot match both
 rows, and our row is the gate; and our `win` is unmoved by `stop=true`
@@ -645,11 +649,10 @@ and 2 is as good a first value as any.  The shape gate opens on 0.02%,
 shots we start on about 5% of hands today and land on 1.5%: sweep the
 loose end.
 
-**To price** (after P5 stage 2 names the field; `mc:128` stands in
-here), one behaviour a run:
+**To price** (against P5 stage 2's instrument), one behaviour a run:
 
 ```console
-F="mc:128 mc:128 mc:128"; B="mc:1024,win=true"
+f="mc:128,def=4,stop=true"; F="$f $f $f"; B="mc:1024,win=true"
 scripts/queue-ab.sh b1-loser2 --games 2000 --seed 21 --ab $B,loser=2 $B $F
 scripts/queue-ab.sh b2-shape3 --games 2000 --seed 21 --ab $B,shape=3 $B $F
 scripts/queue-ab.sh b2-shape5 --games 2000 --seed 21 --ab $B,shape=5 $B $F
