@@ -31,8 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shot keeps the plan for the next hint, and any other card drops it.
 
 - Four behaviours from [docs/clean-room-spec.md](docs/clean-room-spec.md),
-  each behind its own knob, all off by default and none priced yet (see
-  arena-gap P6).  With every knob at its default a seeded arena CSV is
+  each behind its own knob, all off by default (priced in arena-gap P6:
+  `rollout_stoppers` and `shot_shape` 5 pass the first screen and await
+  confirmation; `loser_weight`, live `stoppers` and `suspicion` lose or
+  move nothing).  With every knob at its default a seeded arena CSV is
   byte-identical to the previous build.
   - `HeuristicConfig::loser_weight` (arena `loser=W`, both bot specs): a
     loser-aware pass.  A side-suit card that is not a sure duck is scored

@@ -663,6 +663,30 @@ for m in 1 2 4 8; do
 done
 ```
 
+**Result (read 2026-11-27).**  Five runs, each the knob on minus
+`mc:1024,win=true`, 2000 blocks, seed 21, paired, against three of the
+instrument field (baseline `win` 0.286, own moons 0.015):
+
+| run | `points`/deal | `win` | `not-last` | `rank` | `moons` |
+| --- | --- | --- | --- | --- | --- |
+| B3 `rstop=true` | +0.540±0.034 (+15.9 SE) | +0.049±0.005 (+10.0 SE) | +9.1 SE | +13.3 SE | +0.7 SE |
+| B2 `shape=5` | +0.140±0.025 (+5.5 SE) | +0.012±0.004 (+3.4 SE) | +4.3 SE | +4.7 SE | −0.0019 (−5.4 SE) |
+| B1 `loser=2` | −0.7 SE | −0.001±0.006 (−0.1 SE) | −1.3 SE | −1.0 SE | +0.0024 (+4.1 SE) |
+| B3 `stop=true` | −0.100±0.037 (−2.7 SE) | −0.012±0.006 (−2.1 SE) | −2.3 SE | −3.6 SE | +0.4 SE |
+| B4 `sus=15` | −0.200±0.030 (−6.7 SE) | −0.017±0.005 (−3.6 SE) | −4.5 SE | −5.4 SE | −0.4 SE |
+
+- `rstop` and `shape=5` pass the `win` ≥ +2 SE screen and go to
+  6,000-block fresh-seed confirms.  `rstop` carries a circularity: the
+  instrument field defends with `stop=true`, so the rollouts now model
+  the field's own defence exactly.  Its confirm therefore adds a leg
+  against a field that does not stop (`mc:128` ×3); there it must hold
+  `win` ≥ −2 SE.  That `rstop` leaves our completed moons flat while
+  `points` jumps +0.54/deal fits failed shots no longer being started.
+- `loser=2` is a null on `win` and raises moons by 4 SE (it keeps more
+  high cards).  `stop=true` costs `win` (−2.1 SE), as the smoke run
+  warned.  `sus=15` costs every column (−3.6 SE on `win`), so its single
+  masks are not run.  All three stay off.
+
 B3 is also P5's second knob: `mc:128,stop=true` in the field slots is
 the sweep to run if no trigger reaches the stage 2 gate.  A 150-deal
 smoke run of `stop=true` (not a verdict) read `points` +2.0 SE and
