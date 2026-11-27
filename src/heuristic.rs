@@ -140,18 +140,48 @@ pub(crate) fn pass_key(hand: Hand, card: Card, config: HeuristicConfig) -> (i32,
 /// that finishes a void outbids three that merely start three.  A single sort
 /// cannot see that: it scores every card against the untouched thirteen and
 /// happily passes one card out of each of three short suits, emptying nothing.
-pub(crate) fn greedy_pass(mut hand: Hand, config: HeuristicConfig) -> [Card; 3] {
-    [(); 3].map(|()| {
+///
+/// With [`low_heart`](HeuristicConfig::low_heart) on, a pass that would hold
+/// no heart at or under the cap gives its last slot to the highest such
+/// heart held: the heart is committed first and the other two cards are
+/// chosen from what is left, so a doubleton still empties.  A pass whose
+/// third card is a spade honour is left alone — the queen and her catchers
+/// go before any poison does.
+pub(crate) fn greedy_pass(hand: Hand, config: HeuristicConfig) -> [Card; 3] {
+    let take = |hand: &mut Hand| {
         // A `Copy` snapshot, so the scan borrows nothing the loop mutates —
         // and so the score is visibly against the *current* hand.
-        let current = hand;
+        let current = *hand;
         let pick = current
             .into_iter()
             .max_by_key(|&card| pass_key(current, card, config))
             .expect("a passing hand holds thirteen cards");
         hand.remove(pick);
         pick
-    })
+    };
+    let mut rest = hand;
+    let picks = [(); 3].map(|()| take(&mut rest));
+
+    let cap = config.low_heart;
+    let low = |rank: Rank| rank.get() <= cap;
+    if cap == 0
+        || (picks[2].suit == Suit::Spades && picks[2].rank >= Rank::Q)
+        || picks
+            .iter()
+            .any(|card| card.suit == Suit::Hearts && low(card.rank))
+    {
+        return picks;
+    }
+    let Some(rank) = hand[Suit::Hearts].iter().rev().find(|&rank| low(rank)) else {
+        return picks;
+    };
+    let heart = Card {
+        suit: Suit::Hearts,
+        rank,
+    };
+    let mut rest = hand;
+    rest.remove(heart);
+    [take(&mut rest), take(&mut rest), heart]
 }
 
 /// The card currently winning `trick`
@@ -314,6 +344,14 @@ pub struct HeuristicConfig {
     /// honours over ducks stay — high hearts over four or more are kept as
     /// guards, and a club void counts for less than a diamond one.
     pub loser_weight: u8,
+    /// Experimental (arena-gap P5 stage 3): the pass carries a heart of
+    /// this rank or lower whenever the hand holds one; zero, the default,
+    /// disables it
+    ///
+    /// A low heart is a trick its recipient cannot win, which is what
+    /// stops a moon.  Spade honours are never displaced for it.
+    #[doc(hidden)]
+    pub low_heart: u8,
 }
 
 impl HeuristicConfig {
@@ -332,6 +370,7 @@ impl HeuristicConfig {
             two_of_clubs_bonus: 6,
             queen_insurance: 4,
             loser_weight: 0,
+            low_heart: 0,
         }
     }
 }
@@ -1160,6 +1199,34 @@ mod tests {
         // North must beat the sweep with the K♠ — never its own Q♠.
         assert_eq!(table.turn(), Some(Seat::North));
         assert_eq!(defender.play_card(&table.view(Seat::North)), card("K♠"));
+    }
+
+    #[test]
+    fn the_low_heart_rule_takes_the_last_slot_but_never_from_a_spade_honour() {
+        let poison = |low_heart| HeuristicConfig {
+            low_heart,
+            ..HeuristicConfig::default()
+        };
+
+        // Three clubs empty a suit and carry no heart; the rule commits the
+        // highest heart under the cap and keeps the best two of the rest.
+        let dealt = hand("JKA.23KA.2345.23");
+        let clubs = [card("A♣"), card("K♣"), card("J♣")];
+        assert_eq!(greedy_pass(dealt, poison(0)), clubs);
+        assert_eq!(
+            greedy_pass(dealt, poison(9)),
+            [card("A♣"), card("K♣"), card("5♥")]
+        );
+        assert_eq!(greedy_pass(dealt, poison(3))[2], card("3♥"));
+
+        // An unguarded queen and her catchers go whole.
+        let dealt = hand("2345.2345.29.QKA");
+        assert_eq!(greedy_pass(dealt, poison(9)), greedy_pass(dealt, poison(0)));
+        assert!(
+            greedy_pass(dealt, poison(9))
+                .iter()
+                .all(|card| card.suit == Suit::Spades)
+        );
     }
 
     #[test]

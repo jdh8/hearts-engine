@@ -30,7 +30,7 @@ use std::time::Instant;
 const STRIDE: u64 = 0x9E37_79B9_7F4A_7C15;
 
 /// The reported columns, each with the value a block's four entries must
-/// sum to — `None` for the one column that is not constant-sum.
+/// sum to — `None` for the two moon counts, which are not constant-sum.
 ///
 /// The three rank columns are the payoffs a four-player game leaves open
 /// where a two-player one does not: with two players "seek the win" and
@@ -39,12 +39,13 @@ const STRIDE: u64 = 0x9E37_79B9_7F4A_7C15;
 /// once the cards are played, and their disagreement is the interesting
 /// part — a change that lifts `points` while dropping `win` is reducing
 /// variance in a way the game does not reward.
-const COLS: [(&str, Option<f64>); 5] = [
+const COLS: [(&str, Option<f64>); 6] = [
     ("points", Some(0.0)),   // mean(others) − own, the search signal
     ("win", Some(1.0)),      // 1-0-0-0, the shipped rule; 1/k on a shared win
     ("not-last", Some(3.0)), // 1-1-1-0, loss aversion
     ("rank", Some(6.0)),     // 3-2-1-0 matchpoints, tied ranks averaged
     ("moons", None),         // completed moons per round
+    ("against", None),       // moons the other three completed, per round
 ];
 /// Index of the `points` column: the paired zero-sum search signal.
 const POINTS: usize = 0;
@@ -64,10 +65,11 @@ fn usage() {
         "Usage: arena [--blocks N | --games N] [--seed N] [--ab SPEC] [--csv] [BOT BOT BOT BOT]\n\
          BOT is greedy[:V,H,G[,knob=value...]], newbie or mc[:samples[,knob=value...]].\n\
          greedy:V,H,G sets void_weight,heart_weight,spade_guards positionally;\n\
-         both specs then take named pass knobs void/heart/guards/two/insure/loser,\n\
+         both specs then take named pass knobs void/heart/guards/two/insure/loser/lowh,\n\
          two being the flat bonus for passing the forced 2♣ lead, insure\n\
-         the malus on spades below a queen the hand lacks, and loser the\n\
-         weight of the loser-aware term (0 = off).\n\
+         the malus on spades below a queen the hand lacks, loser the\n\
+         weight of the loser-aware term (0 = off), and lowh the rank cap of\n\
+         the heart every pass must carry (0 = off).\n\
          mc's knobs set the pass model the search ranks, samples its rollout\n\
          opponents, and reads the incoming pass with.  mc also takes win=BOOL,\n\
          bar=X, def=N and rdef=N (live and rollout moon-defense triggers),\n\
@@ -128,7 +130,7 @@ fn parse_args() -> Result<Option<Config>> {
 /// Build one bot, seeded so its search noise is a function of the deal and
 /// its slot alone — never of the deal stream or of who else is at the table.
 /// The named pass knobs both bot specs accept, for their error messages.
-const PASS_KNOBS: &str = "void/heart/guards/two/insure/loser";
+const PASS_KNOBS: &str = "void/heart/guards/two/insure/loser/lowh";
 
 /// Apply one `knob=value` pass setting, or report the key as unknown so the
 /// caller can name its own spec in the error
@@ -144,6 +146,7 @@ fn pass_knob(config: &mut HeuristicConfig, key: &str, value: &str) -> Result<boo
         "two" => config.two_of_clubs_bonus = value.parse()?,
         "insure" => config.queen_insurance = value.parse()?,
         "loser" => config.loser_weight = value.parse()?,
+        "lowh" => config.low_heart = value.parse()?,
         _ => return Ok(false),
     }
     Ok(true)
@@ -414,6 +417,7 @@ fn play_block(
         };
 
         let per_round = f64::from(tally.rounds);
+        let shot: f64 = tally.moons.iter().sum();
         let rank = payoffs(totals);
         let per_seat = [
             tally.margin.map(|value| value / per_round),
@@ -421,6 +425,7 @@ fn play_block(
             rank[2],
             rank[3],
             tally.moons.map(|value| value / per_round),
+            tally.moons.map(|value| (shot - value) / per_round),
         ];
         for (accumulator, values) in block.cols.iter_mut().zip(per_seat) {
             for (total, value) in accumulator.iter_mut().zip(by_bot(values, rotation)) {
@@ -430,7 +435,7 @@ fn play_block(
         block.rounds += tally.rounds;
     }
 
-    // Every reported column but `moons` is constant-sum by construction, so
+    // Every reported column but the two moon counts is constant-sum by construction, so
     // a wrong tie convention or a rotation that lost a bot shows up here
     // rather than as a plausible number three hours later.
     for (col, (name, expected)) in COLS.into_iter().enumerate() {

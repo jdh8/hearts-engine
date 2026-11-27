@@ -95,6 +95,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The arena example reports a sixth column, `against`: the moons the
+  other three seats completed per round, with its paired delta under
+  `--ab`.  It is the column arena-gap P1 owed before feeding could be
+  priced again.  `HeuristicConfig::low_heart` (doc-hidden, off by
+  default; arena `lowh=N`) is the experiment that needed it — the pass
+  gives its last slot to a heart of rank `N` or lower — queued as P5
+  stage 3 beside the moon bar's re-price; it is deleted if it fails.
 - `arena/` turns on `rollout_stoppers` (v3 of the Hearts Bot Arena
   entry), as the site test of a knob the local fields disagree about.
   Stopper-keeping defenders make a shoot world dearer — at the old

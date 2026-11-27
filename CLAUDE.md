@@ -42,7 +42,9 @@ what they removed:
   along a completing suit and a triple that finishes a void beats three
   that start three.  `pass_key` is `(pass_score, danger, rank)` and is
   injective over a hand — no tie ever falls to iteration order.
-  Off by default behind `loser_weight`: the loser-aware pass term.  Also
+  Off by default behind `loser_weight`: the loser-aware pass term; and
+  behind the doc-hidden `low_heart`, an experiment (arena-gap P5 stage 3)
+  that gives the pass's last slot to a low heart.  Also
   here, off by default: `stopper_defense` (knowledge-free, shared by the
   live overlay and shoot-world defenders through `defend`) and `suspect`
   (lead signs, live only).
@@ -76,10 +78,11 @@ what they removed:
   `(--seed, block)`, and bots are built *inside* the trial seeded from
   the deal — so two runs at one seed are paired card for card even
   across rebuilds, and blocks parallelize with no effect on the output.
-  It reports five columns: `points` (`mean(others) − own`, the search
+  It reports six columns: `points` (`mean(others) − own`, the search
   signal) and the three constant-sum rank payoffs `win` (`1-0-0-0`, the
   shipped rule), `not-last` (`1-1-1-0`) and `rank` (`3-2-1-0`), plus
-  `moons` (completed moons per round for the measured seat).  Their
+  `moons` (completed moons per round for the measured seat) and `against`
+  (moons the other three seats completed, per round).  Their
   disagreement is the point — with four players
   "seek the win" and "avoid the loss" are different objectives.
   A/B convention: `rank` is the primary detector (most sensitive under

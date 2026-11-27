@@ -256,8 +256,9 @@ again by another mechanism.
 one low heart in the pass — which halves the recipient's moon rate for
 every bot on the board.  It is a different mechanism from a penalty on
 top cards and was to get its own arm only if P1's knob showed the field
-can price feeding at all.  The knob did not show that, so the arm stays
-unqueued; it would need the moons-against column first.
+can price feeding at all.  The knob did not show that, so the arm stayed
+unqueued until the field was calibrated: it is P5 stage 3's `lowh` run,
+with the moons-against column it needed.
 
 ### P2 — the moon bar against real defenders
 
@@ -594,6 +595,49 @@ rows, and our row is the gate; and our `win` is unmoved by `stop=true`
 since a field that takes point tricks to stop every shot pays for it in
 placings — prefer the mildest stop field that passes.
 
+**Stage 3: queued (2026-11-28).**  P2's bar and P1's second arm, against
+the instrument:
+
+```console
+f="mc:128,def=4,stop=true"; F="$f $f $f"; B="mc:1024,win=true"
+scripts/queue-ab.sh s3-bar1       --games 2000 --seed 21 --ab $B,bar=1 $B $F
+scripts/queue-ab.sh s3-bar1-rstop --games 2000 --seed 21 \
+    --ab $B,rstop=true,bar=1 $B,rstop=true $F
+scripts/queue-ab.sh s3-lowh9      --games 2000 --seed 21 --ab $B,lowh=9 $B $F
+```
+
+- *The bar* is priced twice because v3 changed the baseline: `rstop`
+  already stops the search starting shots that stopper-keeping defenders
+  break, which is the bar's whole job.  The first run says what the
+  instrument makes of the bar P2 priced at −12.9 SE on `mc:128`; the
+  second says whether anything is left for it over v3.
+- *P1's knob is gone* (never committed), so its re-price is the arm P1
+  left untried: one low heart in the pass.  `HeuristicConfig::low_heart`
+  (doc-hidden, default 0; arena `lowh=N`, a pass knob, so it reaches the
+  rollout opponents and the incoming-pass likelihood as `feed` did):
+  when the greedy pass holds no heart of rank `N` or lower and the hand
+  does, the highest such heart is committed and the other two cards are
+  chosen from the rest; a pass whose third card is a spade honour is left
+  alone.  It is the search's incumbent, not its answer — a triple from
+  the top six can still replace it past the gate.
+- *The owed column* is in: the arena prints `against`, the moons the
+  other three seats completed per round, and `--ab` its paired delta.
+
+The rule is pure cost where nobody shoots, and the probes say how much:
+`greedy:lowh=N` against three `greedy` (4,000 deals, seed 3) loses 1.02,
+1.51, 1.79 and 1.31 `points` a deal at `N` = 9, 7, 5 and 3, and the
+search buys most of it back (`mc:64,lowh=9 − mc:64`, 1,200 deals:
+−0.38 ± 0.11).  So one arm, the cheapest, `N = 9`; the instrument's
+shooters complete about 0.066 moons a round against us, and a third of
+those halved is worth at most about 0.4 `points` — the same size as
+the cost.
+
+**Gate.**  `win ≥ +2 SE` advances a run to a 6,000-block fresh-seed
+confirm (and `lowh` to a plain-`mc:128` leg, as `rstop` had).  For
+`lowh`, `against` must fall as well: a `win` gain with `against` flat is
+not this mechanism.  Short of the gate: the bar stays unset in `arena/`,
+`low_heart` and its arena key are deleted, and the null is written here.
+
 ### P6 — the clean-room behaviours
 
 Built from [clean-room-spec.md](clean-room-spec.md) and this repository
@@ -718,7 +762,8 @@ the named bot.
 **v3 (2026-11-28): `rstop` goes up as the site test.**  The local
 fields disagree and no paired run on the site is to be had, so the
 site decides: `arena/` now sets `rollout_stoppers(true)` beside
-`win_only`.  v2 settled at 2327–2333; the reading is v3's rating after
+`win_only`.  v2 stood at 2360 ± 40 after 6,499 games (read
+2026-11-28, 21.5% wins); the reading is v3's rating after
 about a thousand games, and its census (shots started, share landed)
 against v2's 5.4% and 21.0%.  `shape` stays out.
 
@@ -753,7 +798,7 @@ tricks: watch `win`.
 
 P0 → P2's calibration step (cheap, and the bigger leak) beside P1's two
 screens → confirm or delete P1 → P2's rule (failed locally, 2026-11-25)
-→ P5 stages 0–1 (done) → P5 stages 2–4 (stage 2 here now) → P4, with
+→ P5 stages 0–1 (done) → P5 stages 2–4 (stage 3 queued) → P4, with
 the owner's leave, as the confirm → P3.  A new version resets the site
 rating and takes about a thousand games to settle, so changes are batched:
 nothing was to be re-uploaded before P5 stage 5.  P6's `rstop` jumps
