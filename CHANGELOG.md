@@ -32,10 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Four behaviours from [docs/clean-room-spec.md](docs/clean-room-spec.md),
   each behind its own knob, all off by default (priced in arena-gap P6:
-  `rollout_stoppers` and `shot_shape` 5 pass the first screen and await
-  confirmation; `loser_weight`, live `stoppers` and `suspicion` lose or
-  move nothing).  With every knob at its default a seeded arena CSV is
-  byte-identical to the previous build.
+  `rollout_stoppers` is worth `win` +0.050 against a field that keeps
+  stoppers and −0.053 against one that does not, so it models a field
+  rather than adding strength; `shot_shape` 5 confirms at +0.011 against
+  the stopper field and adds nothing over `rollout_stoppers`;
+  `loser_weight`, live `stoppers` and `suspicion` lose or move nothing).
+  With every knob at its default a seeded arena CSV is byte-identical to
+  the previous build.
   - `HeuristicConfig::loser_weight` (arena `loser=W`, both bot specs): a
     loser-aware pass.  A side-suit card that is not a sure duck is scored
     by how exposed its suit is, high hearts over four or more are kept as

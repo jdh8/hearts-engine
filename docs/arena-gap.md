@@ -687,6 +687,34 @@ instrument field (baseline `win` 0.286, own moons 0.015):
   warned.  `sus=15` costs every column (−3.6 SE on `win`), so its single
   masks are not run.  All three stay off.
 
+**Confirms (read 2026-11-28).**  Paired as above; the field is three of
+the named bot.
+
+| run | field | blocks, seed | `points`/deal | `win` | `not-last` | `rank` | `moons` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `rstop=true` | instrument | 6000, 22 | +0.585±0.020 (+30.0 SE) | +0.050±0.003 (+17.7 SE) | +17.9 SE | +24.3 SE | +1.2 SE |
+| `rstop=true` | `mc:128` | 2000, 21 | −0.511±0.042 (−12.2 SE) | −0.053±0.005 (−11.0 SE) | −4.2 SE | −9.8 SE | −0.0244 (−28.1 SE) |
+| `shape=5` | instrument | 6000, 22 | +0.181±0.014 (+12.9 SE) | +0.011±0.002 (+5.8 SE) | +8.2 SE | +9.7 SE | −0.0014 (−6.8 SE) |
+| `shape=5` over `rstop=true` | instrument | 2000, 21 | −0.000±0.003 (−0.0 SE) | +0.0005±0.0005 (+0.9 SE) | −0.1 SE | +0.0 SE | −0.2 SE |
+
+- `rstop` confirms against the instrument and **fails the circularity
+  leg**, by the same amount with the sign turned: +0.050 `win` where the
+  field keeps stoppers, −0.053 where it does not.  Against `mc:128` our
+  completed moons fall from 0.056 to 0.032 a round — shots that would
+  have landed are no longer started.  So `rstop` is not a gain in
+  strength; it is a model of the field's defence, worth what the match
+  is worth.  By the gate as written it is not a v3 candidate on local
+  evidence.  What the local runs cannot say is which field the site is.
+  The instrument's agreement is not independent (it was fitted to our
+  site moon rate with the same `stop` knob); the census is (shots land
+  21% there against about 70% on `mc:128`), and it points at the
+  instrument's side.
+- `shape=5` confirms (+5.8 SE on `win`), and adds nothing over `rstop`:
+  the paired difference is a tenth of its usual width, so the two bots
+  rarely part.  If `rstop` goes in, `shape` stays out.  `shape=5` alone
+  has no plain-field leg; it too withholds shots (−6.8 SE on `moons`),
+  so expect the same sign there until measured.
+
 B3 is also P5's second knob: `mc:128,stop=true` in the field slots is
 the sweep to run if no trigger reaches the stage 2 gate.  A 150-deal
 smoke run of `stop=true` (not a verdict) read `points` +2.0 SE and
