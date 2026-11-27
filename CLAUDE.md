@@ -101,6 +101,14 @@ what they removed:
   `Governor` prices worlds from measured worst costs; re-measure them
   (the `bill` ratios on stderr) after any change to the search's cost.
 
+## Licence
+
+GPL-3.0-or-later from 0.2.0 (0.1.x was Apache-2.0); the sibling `hearts`
+crate stays Apache-2.0.  GPL-3.0 Hearts programs (`brianberns/Hearts`,
+Killer Hearts) may be read as reference.  Code *adapted* from one, as
+opposed to reimplemented from the idea, keeps its copyright notice, is
+named as adapted in the commit, and never goes into `hearts`.
+
 ## Invariants
 
 - Strategies never see a `Round`; only `Table` hands out `View`s.  A new

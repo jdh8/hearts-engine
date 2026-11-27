@@ -1,6 +1,6 @@
 [package]
 name = "hearts-engine"
-version = "0.1.1"
+version = "0.2.0-dev"
 authors = ["Chen-Pang He (https://jdh8.org)"]
 edition = "2024"
 rust-version = "1.93"
@@ -9,7 +9,7 @@ repository = "https://github.com/jdh8/hearts-engine"
 homepage = "https://github.com/jdh8/hearts-engine"
 documentation = "https://docs.rs/hearts-engine"
 readme = "README.md"
-license = "Apache-2.0"
+license = "GPL-3.0-or-later"
 categories = ["game-development", "games", "simulation"]
 keywords = ["hearts", "cards", "ai", "bot", "monte-carlo"]
 # The cross-engine tournament bridge (F#) stays out of the published crate.

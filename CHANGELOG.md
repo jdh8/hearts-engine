@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.2] — Unreleased
+## [0.2.0] — Unreleased
 
 ### Added
 
@@ -52,6 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Relicensed from Apache-2.0 to GPL-3.0-or-later**, hence the minor
+  version bump: a program that links this crate and is distributed must
+  now be GPLv3-compatible as a whole.  Versions up to 0.1.1 remain
+  Apache-2.0, and so does the `hearts` mechanics crate.  The nested
+  `web/` and `arena/` crates follow.
 - `MonteCarloBot` prices a rollout that does not end the game at `0.5`
   plus the round margin over 24 points rather than 112.  The old band
   kept mid-game values inside `(1/4, 3/4)` and over-weighted rollouts that

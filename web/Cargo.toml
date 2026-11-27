@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.93"
 publish = false
-license = "Apache-2.0"
+license = "GPL-3.0-or-later"
 description = "Browser front end for hearts-engine: play three bots in the browser"
 
 # Standalone crate: an empty `[workspace]` makes this its own workspace root so

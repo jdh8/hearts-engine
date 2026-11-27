@@ -8,7 +8,7 @@ mid-game margin instead.
 
 ## Reset moon plans before forced plays
 
-**Status: fixed in 0.1.2** — the reset now precedes both early returns,
+**Status: fixed in 0.2.0** — the reset now precedes both early returns,
 and `a_laydown_moon_is_rolled_as_one` covers the second round.
 
 In [`MonteCarloBot::play_card`](../src/mc.rs), the single-legal-card
@@ -43,14 +43,14 @@ continues within one round. A forced play should still consume no RNG.
 
 ## Make hints honor the live decision policy
 
-**Status: fixed in 0.1.2** — `play_card` and `assess` share one
+**Status: fixed in 0.2.0** — `play_card` and `assess` share one
 pre-search override (moon defense, then the carried plan), still scoring
 every candidate so the flag and the top equity can differ.
 `breaks_a_moon_the_rollouts_never_see` and
 `a_carried_moon_plan_pins_the_hint` check the agreement.  The terminal
 and web hint bots carry a plan through `set_moon_plan` once the human
 plays the flagged shot.  A completion review found two gaps, both fixed
-in 0.1.2: the frontends kept a plan across a new deal when the human's
+in 0.2.0: the frontends kept a plan across a new deal when the human's
 opening play was forced (the engine's first-trick reset never ran), and
 a fully collapsed hint tied every legal play with `shoot: false`, so
 following the carried shot dropped the plan.  Both frontends now reset
@@ -88,7 +88,7 @@ different random samples.
 
 ## Enforce serial and parallel equivalence
 
-**Status: fixed in 0.1.2** — CI's `parallel-equivalence` job plays
+**Status: fixed in 0.2.0** — CI's `parallel-equivalence` job plays
 `--blocks 200 --seed 7 --csv mc:64 greedy greedy greedy` in both builds
 and `cmp`s the CSVs.  The unit test is renamed
 `seeded_pick_is_repeatable` and claims only within-build repeatability.
@@ -108,7 +108,7 @@ within-build repeatability as a separate claim.
 
 ## Investigate score-aware midgame play
 
-**Status: done in 0.1.2** — score-aware equity tied a plain steeper
+**Status: done in 0.2.0** — score-aware equity tied a plain steeper
 margin; the margin's scale was the real lever, and `/112` became `/24`.
 
 All runs below are `--games` A/Bs of `mc:128` in slot 1 against three
@@ -176,5 +176,5 @@ strength and pass-prior measurements were not run.
 Both bug reproductions failed as expected in an isolated copy. Their
 fixture names and reproduction steps above preserve the evidence;
 the repository's runtime code and test suite were unchanged by the
-review. All of them have since landed in 0.1.2; each section's status
+review. All of them have since landed in 0.2.0; each section's status
 names its regression tests.

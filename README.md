@@ -140,6 +140,18 @@ is the primary A/B detector, `points` the interpretable magnitude, and
 [`MonteCarloBot`]: https://docs.rs/hearts-engine/latest/hearts_engine/struct.MonteCarloBot.html
 [`Round`]: https://docs.rs/hearts/latest/hearts/round/struct.Round.html
 
+## License
+
+Copyright © Chen-Pang He.  This program is free software: you can
+redistribute it and/or modify it under the terms of the GNU General Public
+License as published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.  It comes with NO
+WARRANTY; see [LICENSE](https://github.com/jdh8/hearts-engine/blob/main/LICENSE).
+
+Versions up to 0.1.1 were released under Apache-2.0 and stay so.  The
+[`hearts`](https://crates.io/crates/hearts) mechanics crate remains
+Apache-2.0.
+
 ## Sound credits
 
 “[Breaking Glass.wav](https://freesound.org/s/189575/)” by

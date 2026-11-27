@@ -5,6 +5,13 @@ written by a reader of a GPL-3.0 Hearts program and describes *ideas
 only*, restated in this crate's terms.  It contains no code, no
 identifiers, no rule ordering and no constants from that program.
 
+> **Status (2026-11-28).**  The rules below governed the B1–B4
+> implementation (commit `2b349c8`), which was written under them while
+> this crate was Apache-2.0.  The crate is GPL-3.0-or-later from 0.2.0, so
+> the wall is lifted for later work: GPL-3.0 Hearts source may be read
+> directly.  Anything *adapted* from it, as opposed to reimplemented from
+> the idea, keeps its copyright notice and is named as such in the commit.
+
 ## Rules for the implementer
 
 - Work from this document and this repository only.  Do not open, search
