@@ -715,6 +715,34 @@ the named bot.
   has no plain-field leg; it too withholds shots (−6.8 SE on `moons`),
   so expect the same sign there until measured.
 
+**v3 (2026-11-28): `rstop` goes up as the site test.**  The local
+fields disagree and no paired run on the site is to be had, so the
+site decides: `arena/` now sets `rollout_stoppers(true)` beside
+`win_only`.  v2 settled at 2327–2333; the reading is v3's rating after
+about a thousand games, and its census (shots started, share landed)
+against v2's 5.4% and 21.0%.  `shape` stays out.
+
+Stopper-keeping defenders make a shoot world dearer, so the Governor
+was re-measured with the kit's runner (four copies, 64 seeded games a
+build, fuel against the 2×10⁹ decision and 10¹⁰ hand allowances):
+
+| build | worst decision | worst hand | forfeits |
+| --- | --- | --- | --- |
+| v2's prices, `rstop` off | 74.1% | 81.0% | 0 |
+| v2's prices, `rstop` on | 93.4% | 83.6% | 0 |
+| new prices, share 0.75 | 86.2% | 93.4% | 0 |
+| **new prices, share 0.6** | 61.1% | 84.5% | 0 |
+
+v2's own record on the site agrees with its first row (worst decision
+74.0% over 6,499 games, no forfeit), so a 64-game sample reaches the
+tail.  The prices are now the worst measured — a pass 5.8×10⁶ a world
+(was 4.0), a play 1.3×10⁶ + 1.5×10⁵ a trick left (was 2.5×10⁵ +
+1.3×10⁵) — and the share of an allowance a decision plans to spend is
+0.6 (was 0.5 over prices the worst case beat by 1.8×).  The cost is
+worlds: a pass samples 206 (was 250) and a play 369 at trick one
+rising to 750 (was 515 rising to the 1024 cap), on the flat part of
+the world-count curve but not free.
+
 B3 is also P5's second knob: `mc:128,stop=true` in the field slots is
 the sweep to run if no trigger reaches the stage 2 gate.  A 150-deal
 smoke run of `stop=true` (not a verdict) read `points` +2.0 SE and
@@ -728,4 +756,5 @@ screens → confirm or delete P1 → P2's rule (failed locally, 2026-11-25)
 → P5 stages 0–1 (done) → P5 stages 2–4 (stage 2 here now) → P4, with
 the owner's leave, as the confirm → P3.  A new version resets the site
 rating and takes about a thousand games to settle, so changes are batched:
-nothing is re-uploaded before P5 stage 5.
+nothing was to be re-uploaded before P5 stage 5.  P6's `rstop` jumps
+that queue as v3 (2026-11-28), because only the site can read it.

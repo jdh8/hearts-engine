@@ -26,14 +26,14 @@ const ME: Seat = Seat::South;
 const PLACEHOLDER_SALT: u64 = 0x9E37_79B9_7F4A_7C15;
 
 /// The share of a fuel allowance a decision plans to spend, leaving room
-/// for one twice as dear as the worst measured
-const FUEL_SHARE: f64 = 0.5;
+/// for one two-thirds dearer than the worst measured
+const FUEL_SHARE: f64 = 0.6;
 
-/// The worst fuel per world over 14,000 decisions in 32 four-bot games:
+/// The worst fuel per world over 112,000 decisions in 192 four-bot games:
 /// a pass, and a play's fixed part and its part per trick left
-const PASS_PER_WORLD: f64 = 4.0e6;
-const PLAY_PER_WORLD: f64 = 2.5e5;
-const PLAY_PER_WORLD_PER_TRICK: f64 = 1.3e5;
+const PASS_PER_WORLD: f64 = 5.8e6;
+const PLAY_PER_WORLD: f64 = 1.3e6;
+const PLAY_PER_WORLD_PER_TRICK: f64 = 1.5e5;
 
 /// The fewest worlds a decision samples, however short of fuel
 const MIN_SAMPLES: u32 = 16;
@@ -359,8 +359,14 @@ impl ArenaBot {
     fn new(seed: u64) -> Self {
         Self {
             // The arena rates wins and nothing else, so second is worth
-            // what last is.
-            bot: Some(MonteCarloBot::new(StdRng::seed_from_u64(seed)).win_only(true)),
+            // what last is.  Its field defends a moon far better than
+            // the rollouts' plain defenders do (a fifth of our shots land
+            // there), so the shoot worlds' defenders keep their stoppers.
+            bot: Some(
+                MonteCarloBot::new(StdRng::seed_from_u64(seed))
+                    .win_only(true)
+                    .rollout_stoppers(true),
+            ),
             governor: Governor::new(),
             rng: StdRng::seed_from_u64(seed ^ PLACEHOLDER_SALT),
             scores: [0; 4],
@@ -624,20 +630,20 @@ mod tests {
     #[test]
     fn a_full_pool_buys_the_ceiling_share() {
         let mut governor = Governor::new();
-        // 0.5 × 2e9 over 4e6 for a pass, over 2.5e5 + 13 × 1.3e5 for a play
+        // 0.6 × 2e9 over 5.8e6 for a pass, over 1.3e6 + 13 × 1.5e5 for a play
         assert_eq!(
             governor.plan(Kind::Pass, 13, 2_000_000_000, 10_000_000_000, 14),
-            250
+            206
         );
         governor.new_hand();
         assert_eq!(
             governor.plan(Kind::Play, 13, 2_000_000_000, 10_000_000_000, 13),
-            515
+            369
         );
         governor.new_hand();
         assert_eq!(
             governor.plan(Kind::Play, 3, 2_000_000_000, 10_000_000_000, 3),
-            1024
+            685
         );
     }
 
@@ -646,15 +652,15 @@ mod tests {
         let mut governor = Governor::new();
         assert_eq!(
             governor.plan(Kind::Play, 13, 2_000_000_000, 10_000_000_000, 13),
-            515
+            369
         );
-        // Priced at 515 × 1.94e6 = 0.9991e9; billed twice that.
-        let next = governor.plan(Kind::Play, 13, 2_000_000_000, 8_001_800_000, 12);
-        assert_eq!(next, 257);
+        // Priced at 369 × 3.25e6 = 1.19925e9; billed twice that.
+        let next = governor.plan(Kind::Play, 13, 2_000_000_000, 7_601_500_000, 12);
+        assert_eq!(next, 184);
         // A cheap bill never lowers it.
         assert_eq!(
-            governor.plan(Kind::Play, 13, 2_000_000_000, 8_000_000_000, 11),
-            257
+            governor.plan(Kind::Play, 13, 2_000_000_000, 7_600_000_000, 11),
+            184
         );
     }
 
@@ -665,7 +671,7 @@ mod tests {
         governor.new_hand();
         assert_eq!(
             governor.plan(Kind::Pass, 13, 2_000_000_000, 9_000_000_000, 14),
-            250
+            206
         );
         assert_eq!(governor.scale, [1.0; 2]);
     }
@@ -673,16 +679,16 @@ mod tests {
     #[test]
     fn a_drained_pool_keeps_the_floor() {
         let mut governor = Governor::new();
-        // 16 full-hand worlds for each of 9 later plays reserve 279e6.
+        // 16 full-hand worlds for each of 9 later plays reserve 468e6.
         assert_eq!(
             governor.plan(Kind::Play, 4, 2_000_000_000, 250_000_000, 10),
             16
         );
-        // Priced at 16 × 7.7e5 = 12.32e6, billed 100e6: scale 8.12, so the
-        // last play buys 0.5 × 150e6 / (3.8e5 × 8.12) worlds.
+        // Priced at 16 × 1.9e6 = 30.4e6, billed 100e6: scale 3.29, so the
+        // last play buys 0.6 × 150e6 / (1.45e6 × 3.29) worlds.
         assert_eq!(
             governor.plan(Kind::Play, 1, 2_000_000_000, 150_000_000, 1),
-            24
+            18
         );
     }
 }

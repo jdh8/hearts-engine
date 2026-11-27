@@ -95,6 +95,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- `arena/` turns on `rollout_stoppers` (v3 of the Hearts Bot Arena
+  entry), as the site test of a knob the local fields disagree about.
+  Stopper-keeping defenders make a shoot world dearer — at the old
+  prices the worst decision in 64 four-bot games took 93% of the
+  arena's ceiling, against 74% before — so the Governor is re-priced
+  from the measured worst (5.8×10⁶ a world for a pass, 1.3×10⁶ plus
+  1.5×10⁵ per trick left for a play) and plans within 0.6 of an
+  allowance: 61% of the decision's ceiling and 84.5% of the hand's pool
+  at worst over 64 more games, no forfeits.  A play now samples 369 to
+  750 worlds where it sampled 515 to 1024.
 - **Arena-gap P5 stage 2 read (2026-11-26).**  The field's live
   moon-defence trigger is a null knob: `mc:128,def=1` leaves our moons
   at 0.051 a hand against the site's 0.0147 (`def=8` 0.056).  The
